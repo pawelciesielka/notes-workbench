@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 description = "Serwer MCP (stdio, tylko do odczytu) dla Skarbca Notes Workbench"
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 name = "notes-mcp"
 path = "src/main.rs"

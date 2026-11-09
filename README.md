@@ -17,20 +17,19 @@ czekają w `.notes-workbench/propozycje.json` na decyzję w widoku „Propozycje
 
 ## Serwer MCP
 
-```bash
-cargo build --release -p notes-mcp
-```
+Serwerem jest sama aplikacja: `notes-workbench.exe --mcp [--vault <katalog>]` (stdin/stdout, bez okna).
+Najprościej podłączyć go w aplikacji: przycisk z wtyczką („Połącz z AI”) → Połącz przy Claude Desktop,
+Claude Code albo Codex. Aplikacja kopiuje się wtedy do `%USERPROFILE%\.notes-workbench\bin\notes-workbench-mcp.exe`
+(stałe miejsce poza katalogiem instalacji, którego działający serwer nie blokuje) i zmienia w konfiguracji klienta
+tylko wpis `notes-workbench`, z kopią zapasową `*.przed-notes-workbench.bak`:
 
-Plik `target/release/notes-mcp.exe` skopiuj poza AppData (np. `%USERPROFILE%\.notes-workbench\bin`), bo Claude
-ze Sklepu Windows przekierowuje zapisy w AppData do swojego katalogu. Wpis w `claude_desktop_config.json`
-(Claude Desktop → Ustawienia → Developer → Edit Config):
+- Claude Desktop: `claude_desktop_config.json` (wersja ze Sklepu: `%LOCALAPPDATA%\Claude-Data\…`); potem pełny restart Claude,
+  bo działający Claude potrafi nadpisać plik swoją kopią.
+- Claude Code: `claude mcp add --scope user` (gdy nie ma CLI: `~/.claude.json`).
+- Codex: `~/.codex/config.toml`, sekcja `[mcp_servers.notes-workbench]`.
 
-```json
-"notes-workbench": { "command": "C:\\Users\\<ty>\\.notes-workbench\\bin\\notes-mcp.exe", "args": ["--vault", "C:\\Notatki"] }
-```
-
-Bez `--vault` serwer bierze Skarbiec otwarty w aplikacji. Wyszukiwanie po znaczeniu działa, gdy jest włączone
-w aplikacji (serwer tylko czyta model i wektory, niczego nie przelicza).
+Osobny plik serwera (`cargo build --release -p notes-mcp`) działa tak samo. Wyszukiwanie po znaczeniu działa,
+gdy jest włączone w aplikacji (serwer tylko czyta model i wektory, niczego nie przelicza).
 
 ## Wymagania
 

@@ -60,7 +60,20 @@ const notes = [
   { path: "Przykłady/Monitoring/graphite.md", title: "graphite", stem: "graphite" },
 ];
 
+const mcp = {
+  command: "C:\\Users\\Jan\\.notes-workbench\\bin\\notes-workbench-mcp.exe",
+  args: ["--mcp", "--vault", "C:\\Notatki"],
+  vault: "C:\\Notatki",
+  clients: [
+    { id: "claude-desktop", name: "Claude Desktop", detected: true, connected: true, config: "C:\\Users\\Jan\\AppData\\Local\\Claude\\claude_desktop_config.json", after: "Zamknij Claude całkowicie (ikona w zasobniku → Quit) i uruchom ponownie." },
+    { id: "claude-code", name: "Claude Code", detected: true, connected: false, config: "C:\\Users\\Jan\\.claude.json", after: "Działa w nowych sesjach Claude Code." },
+    { id: "codex", name: "Codex", detected: false, connected: false, config: "C:\\Users\\Jan\\.codex\\config.toml", after: "Działa w nowych sesjach Codex." },
+  ],
+  snippet: '{\n  "notes-workbench": {\n    "command": "C:\\\\Users\\\\Jan\\\\.notes-workbench\\\\bin\\\\notes-workbench-mcp.exe",\n    "args": ["--mcp", "--vault", "C:\\\\Notatki"]\n  }\n}',
+};
+
 const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
+  mcp_status: () => mcp,
   get_vault: () => "C:\\Notatki",
   set_vault: () => null,
   vault_tree: (a) => (a.trash ? [] : tree),

@@ -9,6 +9,7 @@ import { TagsPanel } from "./components/TagsPanel";
 import { GraphView } from "./components/GraphView";
 import { SearchPanel } from "./components/SearchPanel";
 import { ProposalsView } from "./components/ProposalsView";
+import { McpView } from "./components/McpView";
 import { useTheme, type ThemeMode } from "./lib/theme";
 import { ContextMenu, FolderPicker, PromptDialog, type MenuItem } from "./components/Menu";
 import { ask } from "@tauri-apps/plugin-dialog";
@@ -32,6 +33,7 @@ import {
   ReportIcon,
   SearchIcon,
   SparkIcon,
+  PlugIcon,
   SunIcon,
   TagIcon,
   TrashIcon,
@@ -43,6 +45,7 @@ type Main =
   | { kind: "note"; path: string; edit?: boolean }
   | { kind: "graph" }
   | { kind: "proposals" }
+  | { kind: "mcp" }
   | { kind: "report" }
   | { kind: "import" }
   | { kind: "empty" };
@@ -553,6 +556,14 @@ export default function App() {
             <SparkIcon />
             {proposalCount > 0 && <span className="badge">{proposalCount}</span>}
           </button>
+          <button
+            className={`icon-btn${main.kind === "mcp" ? " on" : ""}`}
+            onClick={() => setMain({ kind: "mcp" })}
+            title="Połącz z AI: Claude Desktop, Claude Code, Codex (MCP)"
+            aria-label="Połącz z AI"
+          >
+            <PlugIcon />
+          </button>
         </div>
         <div className="side-tabs" role="tablist">
           <button className={`tab${side === "notes" ? " on" : ""}`} onClick={() => setSide("notes")} title="Drzewo Notatek">
@@ -628,6 +639,7 @@ export default function App() {
         {main.kind === "graph" && (
           <GraphView center={lastNote} theme={theme} onOpen={openNote} onTag={openTag} onError={onError} />
         )}
+        {main.kind === "mcp" && <McpView onError={onError} onOpenProposals={() => setMain({ kind: "proposals" })} />}
         {main.kind === "proposals" && (
           <ProposalsView
             onOpen={openNote}

@@ -176,3 +176,9 @@ export const RestoreIcon = (p: P) => (
     <path d="M4 4v4.6h4.6" />
   </Svg>
 );
+export const PlugIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M9 3v4M15 3v4M7 7h10v4a5 5 0 0 1-10 0z" />
+    <path d="M12 16v5" />
+  </Svg>
+);

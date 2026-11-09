@@ -1,3 +1,5 @@
+mod mcp_setup;
+
 use notes_core::index::{self, Index};
 use notes_core::proposals;
 use notes_core::search::{self, Search};
@@ -453,6 +455,27 @@ fn reveal_path(app: AppHandle, state: State<AppState>, path: String) -> Result<(
     app.opener().reveal_item_in_dir(&p).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn mcp_status(state: State<AppState>) -> Result<mcp_setup::Status, String> {
+    Ok(mcp_setup::status(&state.vault()?.to_string_lossy()))
+}
+
+/// Podłącza serwer MCP (ten Skarbiec) do klienta AI: `claude-desktop`, `claude-code` albo `codex`.
+#[tauri::command]
+async fn mcp_connect(state: State<'_, AppState>, client: String) -> Result<mcp_setup::Status, String> {
+    let vault = state.vault()?.to_string_lossy().to_string();
+    let v = vault.clone();
+    tauri::async_runtime::spawn_blocking(move || mcp_setup::connect(&client, &v)).await.map_err(|e| e.to_string())??;
+    Ok(mcp_setup::status(&vault))
+}
+
+#[tauri::command]
+async fn mcp_disconnect(state: State<'_, AppState>, client: String) -> Result<mcp_setup::Status, String> {
+    let vault = state.vault()?.to_string_lossy().to_string();
+    tauri::async_runtime::spawn_blocking(move || mcp_setup::disconnect(&client)).await.map_err(|e| e.to_string())??;
+    Ok(mcp_setup::status(&vault))
+}
+
 /// Otwiera katalog Skarbca w Eksploratorze Windows.
 #[tauri::command]
 fn reveal_vault(app: AppHandle, state: State<AppState>) -> Result<(), String> {
@@ -551,6 +574,9 @@ pub fn run() {
             open_vault_file,
             reveal_vault,
             reveal_path,
+            mcp_status,
+            mcp_connect,
+            mcp_disconnect,
             create_folder,
             rename_folder,
             move_note,

@@ -82,6 +82,16 @@ export type SemanticInfo = {
 };
 export type SemHit = SearchHit & { score: number };
 
+export type McpClient = {
+  id: "claude-desktop" | "claude-code" | "codex";
+  name: string;
+  detected: boolean;
+  connected: boolean;
+  config: string | null;
+  after: string;
+};
+export type McpStatus = { command: string; args: string[]; vault: string; clients: McpClient[]; snippet: string };
+
 /** Wynik przeniesienia: nowa ścieżka i liczba Notatek z poprawionymi Linkami. */
 export type OpResult = { path: string; fixed: number };
 
@@ -126,6 +136,9 @@ export const api = {
   readNote: (path: string) => invoke<NoteData>("read_note", { path }),
   readReport: () => invoke<Report | null>("read_report"),
   revealVault: () => invoke<void>("reveal_vault"),
+  mcpStatus: () => invoke<McpStatus>("mcp_status"),
+  mcpConnect: (client: string) => invoke<McpStatus>("mcp_connect", { client }),
+  mcpDisconnect: (client: string) => invoke<McpStatus>("mcp_disconnect", { client }),
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),
   createFolder: (parent: string, name: string) => invoke<string>("create_folder", { parent, name }),
   renameFolder: (path: string, name: string) => invoke<OpResult>("rename_folder", { path, name }),
