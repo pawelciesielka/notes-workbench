@@ -1,0 +1,10 @@
+node_modules/
+dist/
+target/
+src-tauri/gen/
+.claude/settings.local.json
+*.log
+
+# Eksport AMNO (dane prywatne, źródło Importu)
+My Data.htm
+My Data - files/
