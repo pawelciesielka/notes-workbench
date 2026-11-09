@@ -1,4 +1,5 @@
 use notes_core::index::{self, Index};
+use notes_core::proposals;
 use notes_core::search::{self, Search};
 use notes_core::semantic::{self, Semantic};
 use notes_core::vault;
@@ -296,6 +297,53 @@ fn set_note_title(state: State<AppState>, path: String, title: String) -> Result
     Ok(n)
 }
 
+#[derive(Serialize)]
+struct ProposalView {
+    #[serde(flatten)]
+    p: proposals::Proposal,
+    note_title: String,
+    target_title: Option<String>,
+}
+
+/// Oczekujące Propozycje z tytułami Notatek (najpierw sprząta te o nieistniejących Notatkach).
+#[tauri::command]
+fn list_proposals(state: State<AppState>) -> Result<Vec<ProposalView>, String> {
+    let vault = state.vault()?;
+    state.with_index(|idx, v| {
+        proposals::prune(v, idx)?;
+        Ok(proposals::pending(&vault)?
+            .into_iter()
+            .map(|p| ProposalView {
+                note_title: idx.title(&p.note).unwrap_or_else(|| p.note.clone()),
+                target_title: p.target.as_ref().map(|t| idx.title(t).unwrap_or_else(|| t.clone())),
+                p,
+            })
+            .collect())
+    })?
+}
+
+/// Akceptuje Propozycje (zapis we frontmatterze Notatek); zwraca liczbę zaakceptowanych.
+#[tauri::command]
+fn accept_proposals(state: State<AppState>, ids: Vec<u64>) -> Result<usize, String> {
+    let vault = state.vault()?;
+    let mut done = 0;
+    for id in ids {
+        let note = state.with_index(|idx, _| proposals::accept(&vault, idx, id))??;
+        state.changed(None, Some(&note))?;
+        done += 1;
+    }
+    Ok(done)
+}
+
+#[tauri::command]
+fn reject_proposals(state: State<AppState>, ids: Vec<u64>) -> Result<(), String> {
+    let vault = state.vault()?;
+    for id in ids {
+        proposals::reject(&vault, id)?;
+    }
+    Ok(())
+}
+
 /// Oznacza Notatkę jako niedostępną dla AI (Tag `noai` we frontmatterze) albo zdejmuje oznaczenie.
 #[tauri::command]
 fn set_noai(state: State<AppState>, path: String, on: bool) -> Result<vault::NoteData, String> {
@@ -415,6 +463,9 @@ pub fn run() {
             save_note,
             set_note_title,
             set_noai,
+            list_proposals,
+            accept_proposals,
+            reject_proposals,
             create_note,
             trash_note,
             restore_note,

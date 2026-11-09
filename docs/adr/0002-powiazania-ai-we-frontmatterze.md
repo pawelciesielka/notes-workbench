@@ -10,4 +10,8 @@ AI ma łączyć Notatki w Graf wiedzy, ale treść Notatki należy wyłącznie d
 
 ## Konsekwencje
 
-Graf wiedzy i backlinki muszą czytać zarówno Linki z treści, jak i pole `powiazane` z frontmattera. Odrzucone Propozycje powiązania też trzeba gdzieś pamiętać; miejsce ustalimy w etapie AI.
+Graf wiedzy i backlinki muszą czytać zarówno Linki z treści, jak i pole `powiazane` z frontmattera.
+
+Propozycje (oczekujące i odrzucone) leżą w Skarbcu, w `.notes-workbench/propozycje.json`: odrzucenie to decyzja użytkownika, więc musi przetrwać przeinstalowanie aplikacji i synchronizować się z notatkami. Zaakceptowana Propozycja znika z kolejki, bo jej śladem jest wpis we frontmatterze.
+
+Zamiast wbudowanego modelu językowego Propozycje zgłasza Claude przez serwer MCP (`propose_relations`, `propose_tags`). Serwer nie zmienia Notatek, tylko kolejkę; akceptacja odbywa się w aplikacji. Ta sama kolejka posłuży, jeśli kiedyś dojdzie wbudowane AI.

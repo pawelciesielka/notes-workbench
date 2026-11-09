@@ -75,7 +75,24 @@ export type SemanticInfo = {
 };
 export type SemHit = SearchHit & { score: number };
 
+export type Proposal = {
+  id: number;
+  kind: "relation" | "tag";
+  note: string;
+  target?: string;
+  tag?: string;
+  reason: string;
+  source: string;
+  created: string;
+  status: "pending" | "rejected";
+  note_title: string;
+  target_title: string | null;
+};
+
 export const api = {
+  proposals: () => invoke<Proposal[]>("list_proposals"),
+  acceptProposals: (ids: number[]) => invoke<number>("accept_proposals", { ids }),
+  rejectProposals: (ids: number[]) => invoke<void>("reject_proposals", { ids }),
   semanticStatus: () => invoke<SemanticInfo>("semantic_status"),
   semanticEnable: () => invoke<void>("semantic_enable"),
   semanticSearch: (query: string) => invoke<SemHit[]>("semantic_search", { query }),

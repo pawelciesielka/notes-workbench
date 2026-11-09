@@ -12,6 +12,8 @@ pobierany raz do `%LOCALAPPDATA%\eu.ciesielka.notesworkbench\modele`; wektory w 
 Etap 4: serwer MCP tylko do odczytu (`crates/notes-mcp`) dla Claude: `search_notes`, `read_note`, `list_notes`,
 `note_links`, `list_tags`. Notatki z Tagiem `noai` (przycisk „Ukryj przed AI”; na Notatce folderu ukrywa cały Folder)
 są dla serwera niewidoczne.
+Etap 5: Claude przez MCP proponuje powiązania i Tagi (`propose_relations`, `propose_tags`, `list_proposals`);
+czekają w `.notes-workbench/propozycje.json` na decyzję w widoku „Propozycje” aplikacji (ADR 0002).
 
 ## Serwer MCP
 
@@ -78,6 +80,7 @@ Wynik trafia do `.notes-workbench/import/raport.json` i `raport.md` w Skarbcu (w
   - `index.rs`: indeks Linków, Backlinków i Tagów w pamięci (pomija kod i HTML), Graf wiedzy, `#noai`
   - `search.rs`: wyszukiwanie pełnotekstowe (FTS5 w pamięci, synchronizacja po dacie modyfikacji)
   - `semantic.rs`: wektory fragmentów Notatek, wyszukiwanie po znaczeniu, Notatki podobne
+  - `proposals.rs`: kolejka Propozycji powiązań i Tagów (dodanie, akceptacja, odrzucenie)
 - `crates/notes-mcp/`: serwer MCP (stdio, JSON-RPC), tylko do odczytu
 - `src-tauri/src/`: komendy aplikacji i protokół `vault://` (obrazy, PDF ze Skarbca)
 - `src/`: UI (React): drzewo, widok i edytor Notatki (CodeMirror), Tagi, Graf wiedzy (force-graph), Raport, kreator Importu

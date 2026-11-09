@@ -659,6 +659,76 @@ input {
   color: var(--fg);
   border-radius: 2px;
 }
+.proposal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.proposal-bar .tabs {
+  padding: 0;
+}
+.proposal-bulk {
+  display: flex;
+  gap: 6px;
+}
+.proposals,
+.proposal-empty {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+}
+.proposals li {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+}
+.proposal-what {
+  grid-column: 1;
+  font-weight: 600;
+}
+.proposal-reason {
+  grid-column: 1;
+}
+.proposal-meta {
+  grid-column: 1;
+}
+.proposal-actions {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.proposal-kind {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 7px;
+  margin-right: 8px;
+}
+.proposal-kind.tag-kind,
+.tag-name {
+  color: var(--tag);
+}
+.badge {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 5px;
+  margin-left: 4px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+}
 .toggle.noai-on {
   color: var(--bad-fg);
   background: var(--bad-bg);

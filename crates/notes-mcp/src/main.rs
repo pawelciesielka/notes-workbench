@@ -7,6 +7,7 @@
 //! Kosz i katalog aplikacji są niewidoczne, tak jak w wyszukiwaniu w aplikacji.
 
 use notes_core::index::{self, Index};
+use notes_core::proposals;
 use notes_core::search::{Search, HL_END, HL_START};
 use notes_core::semantic::{self, Semantic};
 use notes_core::vault::{self, TreeNode};
@@ -17,6 +18,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 const APP_ID: &str = "eu.ciesielka.notesworkbench";
+/// Źródło Propozycji pokazywane użytkownikowi w aplikacji.
+const SOURCE: &str = "Claude (MCP)";
 const PROTOCOLS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 /// Limit tekstu jednej odpowiedzi, żeby wielka Notatka nie zajęła całego kontekstu Claude.
 const MAX_TEXT: usize = 60_000;
@@ -362,6 +365,87 @@ impl Server {
                     Ok(notes.iter().map(|n| format!("- {} — path: {}", n.title, n.path)).collect::<Vec<_>>().join("\n"))
                 }
             }
+            "propose_relations" | "propose_tags" => {
+                let items = args.get("items").and_then(Value::as_array).ok_or("Podaj items (lista).")?;
+                if items.len() > 50 {
+                    return Err("Najwyżej 50 Propozycji naraz.".into());
+                }
+                let mut out = String::new();
+                let (mut added, mut skipped) = (0, 0);
+                for (i, it) in items.iter().enumerate() {
+                    let g = |k: &str| it.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+                    let reason = g("reason");
+                    let res = if name == "propose_relations" {
+                        let (a, b) = (g("from"), g("to"));
+                        match (self.find_note(&a), self.find_note(&b)) {
+                            (Ok(pa), Ok(pb)) => proposals::add_relation(&vault, self.idx(), &pa, &pb, &reason, SOURCE)
+                                .map(|r| (format!("{} ↔ {}", self.idx().title(&pa).unwrap_or(pa.clone()), self.idx().title(&pb).unwrap_or(pb.clone())), r)),
+                            (Err(e), _) | (_, Err(e)) => Ok((format!("{a} ↔ {b}"), proposals::Added::NotFound(e))),
+                        }
+                    } else {
+                        let (p, tag) = (g("path"), g("tag"));
+                        match self.find_note(&p) {
+                            Ok(pp) => proposals::add_tag(&vault, self.idx(), &pp, &tag, &reason, SOURCE)
+                                .map(|r| (format!("#{} → {}", tag.trim_start_matches('#'), self.idx().title(&pp).unwrap_or(pp.clone())), r)),
+                            Err(e) => Ok((format!("#{tag} → {p}"), proposals::Added::NotFound(e))),
+                        }
+                    }?;
+                    let (label, r) = res;
+                    let msg = match r {
+                        proposals::Added::Added(id) => {
+                            added += 1;
+                            format!("dodano (id {id})")
+                        }
+                        other => {
+                            skipped += 1;
+                            match other {
+                                proposals::Added::AlreadyPending => "pominięto: już czeka na decyzję".into(),
+                                proposals::Added::RejectedBefore => "pominięto: użytkownik wcześniej to odrzucił, nie proponuj ponownie".into(),
+                                proposals::Added::AlreadyLinked => "pominięto: już połączone / już ma ten Tag".into(),
+                                proposals::Added::NotFound(e) | proposals::Added::Invalid(e) => format!("błąd: {e}"),
+                                proposals::Added::Added(_) => unreachable!(),
+                            }
+                        }
+                    };
+                    out += &format!("{}. {label}: {msg}\n", i + 1);
+                }
+                Ok(format!(
+                    "Dodano {added}, pominięto {skipped}.\n{out}\nPropozycje czekają na akceptację użytkownika w aplikacji Notes Workbench (widok Propozycje); dopiero wtedy trafiają do Notatek.",
+                ))
+            }
+            "list_proposals" => {
+                let status = args.get("status").and_then(Value::as_str).unwrap_or("pending");
+                let filter = match args.get("path").and_then(Value::as_str) {
+                    Some(p) if !p.trim().is_empty() => Some(self.find_note(p)?),
+                    _ => None,
+                };
+                let all = proposals::list(&vault)?;
+                let shown: Vec<_> = all
+                    .iter()
+                    .filter(|p| match status {
+                        "rejected" => p.status == proposals::Status::Rejected,
+                        "all" => true,
+                        _ => p.status == proposals::Status::Pending,
+                    })
+                    // Propozycje dotyczące Notatek ukrytych przed AI też są ukryte.
+                    .filter(|p| !self.noai.contains(&p.note) && p.target.as_ref().is_none_or(|t| !self.noai.contains(t)))
+                    .filter(|p| filter.as_ref().is_none_or(|f| &p.note == f || p.target.as_ref() == Some(f)))
+                    .collect();
+                if shown.is_empty() {
+                    return Ok("Brak Propozycji.".into());
+                }
+                let t = |p: &str| self.idx().title(p).unwrap_or_else(|| p.to_string());
+                let mut out = format!("Propozycje ({}):\n", shown.len());
+                for p in shown {
+                    let what = match p.kind {
+                        proposals::Kind::Relation => format!("{} ↔ {}", t(&p.note), t(p.target.as_deref().unwrap_or(""))),
+                        proposals::Kind::Tag => format!("#{} → {}", p.tag.as_deref().unwrap_or(""), t(&p.note)),
+                    };
+                    let st = if p.status == proposals::Status::Rejected { " [odrzucona]" } else { "" };
+                    out += &format!("- id {}: {what}{st} — {}\n", p.id, p.reason);
+                }
+                Ok(clip(&out, MAX_TEXT))
+            }
             _ => Err(format!("Nieznane narzędzie: {name}")),
         }
     }
@@ -427,6 +511,77 @@ tags, accepted AI relations (Powiązania) and semantically similar notes.",
             "annotations": ro
         },
         {
+            "name": "propose_relations",
+            "title": "Zaproponuj powiązania",
+            "description": "Propose links (Powiązania) between pairs of notes that are genuinely related in content (same project, \
+topic, problem, person or decision) — not merely sharing a word. Each item needs a one-sentence 'reason' in Polish that \
+the user will read when deciding. Nothing is written to the notes: proposals wait in a queue until the user accepts them \
+in the Notes Workbench app; accepted ones become `powiazane: [[...]]` in the note's frontmatter. Previously rejected pairs \
+are refused — do not re-propose them. Use search_notes/note_links (it shows similar notes) to find candidates and \
+read_note to verify before proposing. Up to 50 items per call.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "maxItems": 50,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "from": { "type": "string", "description": "Note path (the relation is stored in this note)" },
+                                "to": { "type": "string", "description": "Related note path" },
+                                "reason": { "type": "string", "description": "Why they are related, one sentence in Polish" }
+                            },
+                            "required": ["from", "to", "reason"]
+                        }
+                    }
+                },
+                "required": ["items"]
+            },
+            "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false }
+        },
+        {
+            "name": "propose_tags",
+            "title": "Zaproponuj Tagi",
+            "description": "Propose tags for notes. Prefer existing tags (see list_tags); create a new tag only when none fits. \
+Tags: lowercase, letters/digits/_-/ without spaces, Polish words are fine. Each item needs a short 'reason' in Polish. \
+Proposals wait for the user's acceptance in the app; accepted tags go to `tags:` in the frontmatter. Up to 50 items per call.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "maxItems": 50,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": { "type": "string" },
+                                "tag": { "type": "string" },
+                                "reason": { "type": "string" }
+                            },
+                            "required": ["path", "tag", "reason"]
+                        }
+                    }
+                },
+                "required": ["items"]
+            },
+            "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false }
+        },
+        {
+            "name": "list_proposals",
+            "title": "Propozycje",
+            "description": "List proposals in the queue: 'pending' (default, waiting for the user), 'rejected' (do not propose again) or 'all'. \
+Optional 'path' limits to proposals involving one note.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "status": { "type": "string", "enum": ["pending", "rejected", "all"], "default": "pending" },
+                    "path": { "type": "string" }
+                }
+            },
+            "annotations": ro
+        },
+        {
             "name": "list_tags",
             "title": "Tagi",
             "description": "Without 'tag': all tags with note counts. With 'tag': the notes that have this tag.",
@@ -452,7 +607,9 @@ fn handle(srv: &mut Server, msg: &Value) -> Option<Value> {
                 "protocolVersion": version,
                 "capabilities": { "tools": { "listChanged": false } },
                 "serverInfo": { "name": "notes-workbench", "title": "Notes Workbench", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": "Read-only access to the user's personal knowledge base (Markdown notes, mostly in Polish). \
+                "instructions": "Access to the user's personal knowledge base. Notes themselves are read-only; you can propose \
+relations and tags (propose_relations, propose_tags), which the user accepts or rejects in the Notes Workbench app. \
+Personal knowledge base (Markdown notes, mostly in Polish). \
 Start with search_notes, then read_note for full text. Notes link to each other with [[links]] and #tags; \
 use note_links to follow the knowledge graph. Cite note titles when you use their content. \
 The user has marked some notes as unavailable to AI (#noai); they are hidden from every tool. \

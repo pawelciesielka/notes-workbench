@@ -416,6 +416,21 @@ impl Index {
         v
     }
 
+    /// Czy Notatki są już połączone Linkiem albo Powiązaniem (w którąkolwiek stronę).
+    pub fn linked(&self, a: &str, b: &str) -> bool {
+        let points = |from: &str, to: &str| {
+            self.notes
+                .get(from)
+                .is_some_and(|n| n.links.iter().any(|l| self.resolve(from, &l.target).as_deref() == Some(to)))
+        };
+        points(a, b) || points(b, a)
+    }
+
+    pub fn has_tag(&self, path: &str, tag: &str) -> bool {
+        let k = tag_key(tag);
+        self.notes.get(path).is_some_and(|n| n.tags.iter().any(|t| tag_key(t) == k))
+    }
+
     pub fn title(&self, path: &str) -> Option<String> {
         self.notes.get(path).map(|n| n.title.clone())
     }

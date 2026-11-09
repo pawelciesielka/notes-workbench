@@ -236,6 +236,20 @@ pub fn set_title(vault: &Path, rel_path: &str, title: &str) -> Result<NoteData, 
     read_note(vault, rel_path)
 }
 
+/// Dopisuje wartość do listy we frontmatterze (np. `powiazane: ["[[X]]"]`), jeśli jej tam nie ma.
+pub fn add_fm_list_item(vault: &Path, rel_path: &str, key: &str, item: &str) -> Result<NoteData, String> {
+    let p = note_file(vault, rel_path)?;
+    let raw = fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+    let (fm, body) = split_frontmatter(&raw);
+    let mut items = crate::index::fm_list(fm, key);
+    if !items.iter().any(|x| x.eq_ignore_ascii_case(item)) {
+        items.push(item.to_string());
+        let fm = set_fm(fm, key, Some(&serde_json::to_string(&items).unwrap()));
+        write_atomic(&p, &compose(&fm, body))?;
+    }
+    read_note(vault, rel_path)
+}
+
 /// Dodaje albo usuwa Tag we frontmatterze (`tags: [...]`), nie ruszając treści.
 pub fn set_fm_tag(vault: &Path, rel_path: &str, tag: &str, on: bool) -> Result<NoteData, String> {
     let p = note_file(vault, rel_path)?;

@@ -8,10 +8,12 @@ import { ImportWizard } from "./components/ImportWizard";
 import { TagsPanel } from "./components/TagsPanel";
 import { GraphView } from "./components/GraphView";
 import { SearchPanel } from "./components/SearchPanel";
+import { ProposalsView } from "./components/ProposalsView";
 
 type Main =
   | { kind: "note"; path: string; edit?: boolean }
   | { kind: "graph" }
+  | { kind: "proposals" }
   | { kind: "report" }
   | { kind: "import" }
   | { kind: "empty" };
@@ -33,6 +35,7 @@ export default function App() {
   // Ostatnio otwarta Notatka: środek grafu lokalnego.
   const [lastNote, setLastNote] = useState<string | null>(null);
   const [report, setReport] = useState<Report | null>(null);
+  const [proposalCount, setProposalCount] = useState(0);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -51,6 +54,10 @@ export default function App() {
         const [, s, r] = await Promise.all([loadTrees(), api.index(rebuild), api.readReport()]);
         setSummary(s);
         setReport(r);
+        api
+          .proposals()
+          .then((p) => setProposalCount(p.length))
+          .catch(() => {});
       } catch (e) {
         setError(String(e));
       }
@@ -187,6 +194,13 @@ export default function App() {
           <button className={main.kind === "graph" ? "on" : ""} onClick={() => setMain({ kind: "graph" })}>
             Graf wiedzy
           </button>
+          <button
+            className={main.kind === "proposals" ? "on" : ""}
+            onClick={() => setMain({ kind: "proposals" })}
+            title="Powiązania i Tagi zaproponowane przez AI"
+          >
+            Propozycje{proposalCount > 0 && <span className="badge">{proposalCount}</span>}
+          </button>
         </div>
         <div className="side-tabs">
           <button className={`tab${side === "notes" ? " on" : ""}`} onClick={() => setSide("notes")}>
@@ -244,6 +258,19 @@ export default function App() {
         )}
         {main.kind === "graph" && (
           <GraphView center={lastNote} onOpen={openNote} onTag={openTag} onError={onError} />
+        )}
+        {main.kind === "proposals" && (
+          <ProposalsView
+            onOpen={openNote}
+            onError={onError}
+            onChanged={() => {
+              onChanged(false);
+              api
+                .proposals()
+                .then((p) => setProposalCount(p.length))
+                .catch(() => {});
+            }}
+          />
         )}
         {main.kind === "report" && report && <ReportView report={report} onOpen={openNote} />}
         {main.kind === "import" && (
