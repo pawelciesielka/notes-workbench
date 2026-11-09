@@ -19,10 +19,12 @@ function filterTree(nodes: TreeNode[], q: string): TreeNode[] {
 type Props = {
   nodes: TreeNode[];
   selected: string | null;
+  /** Notatki ukryte przed AI (oznaczane kłódką). */
+  noai?: Set<string>;
   onOpen: (notePath: string) => void;
 };
 
-export function Tree({ nodes, selected, onOpen }: Props) {
+export function Tree({ nodes, selected, noai, onOpen }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const q = norm(query.trim());
@@ -56,6 +58,11 @@ export function Tree({ nodes, selected, onOpen }: Props) {
           >
             <span className="tree-icon">{isFolder ? (isOpen ? "▾" : "▸") : ""}</span>
             <span className="tree-label">{n.title}</span>
+            {noai && (noai.has(n.path) || (n.folder_note !== null && noai.has(n.folder_note))) && (
+              <span className="tree-lock" title="Ukryta przed AI (#noai)">
+                🔒
+              </span>
+            )}
             {isFolder && n.folder_note && <span className="tree-badge" title="Folder ma Notatkę folderu">●</span>}
           </div>
           {isFolder && isOpen && render(n.children, depth + 1)}

@@ -236,6 +236,24 @@ pub fn set_title(vault: &Path, rel_path: &str, title: &str) -> Result<NoteData, 
     read_note(vault, rel_path)
 }
 
+/// Dodaje albo usuwa Tag we frontmatterze (`tags: [...]`), nie ruszając treści.
+pub fn set_fm_tag(vault: &Path, rel_path: &str, tag: &str, on: bool) -> Result<NoteData, String> {
+    let p = note_file(vault, rel_path)?;
+    let raw = fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+    let (fm, body) = split_frontmatter(&raw);
+    let mut tags: Vec<String> = crate::index::fm_list(fm, "tags").into_iter().map(|t| t.trim_start_matches('#').to_string()).collect();
+    let key = tag.to_lowercase();
+    tags.retain(|t| t.to_lowercase() != key);
+    if on {
+        tags.push(tag.to_string());
+    }
+    let v = (!tags.is_empty()).then(|| serde_json::to_string(&tags).unwrap());
+    let fm = set_fm(fm, "tags", v.as_deref());
+    // Notatka bez frontmattera dostaje go tylko wtedy, gdy jest co zapisać.
+    write_atomic(&p, &compose(&fm, body))?;
+    read_note(vault, rel_path)
+}
+
 fn used_names(dir: &Path) -> std::collections::HashSet<String> {
     fs::read_dir(dir)
         .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().to_lowercase()).collect())
@@ -342,6 +360,12 @@ mod tests {
         let n = set_title(&dir, &p, "Nowy").unwrap();
         assert_eq!(n.title, "Nowy");
         assert_eq!(n.body, "Treść [[X]]\n");
+        let n = set_fm_tag(&dir, &p, "noai", true).unwrap();
+        assert!(n.frontmatter.contains("tags: [\"noai\"]"), "{}", n.frontmatter);
+        assert_eq!(n.body, "Treść [[X]]\n");
+        let n = set_fm_tag(&dir, &p, "noai", false).unwrap();
+        assert!(!n.frontmatter.contains("tags"), "{}", n.frontmatter);
+        assert_eq!(n.title, "Nowy");
         fs::create_dir_all(dir.join("F/Moja_ notatka.assets")).unwrap();
         let t = trash_note(&dir, &p).unwrap();
         assert_eq!(t, ".kosz/F/Moja_ notatka.md");

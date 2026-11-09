@@ -659,6 +659,16 @@ input {
   color: var(--fg);
   border-radius: 2px;
 }
+.toggle.noai-on {
+  color: var(--bad-fg);
+  background: var(--bad-bg);
+  border-color: transparent;
+}
+.tree-lock {
+  font-size: 10px;
+  margin-left: 4px;
+  opacity: 0.8;
+}
 .search-modes {
   padding: 0 10px 6px;
   align-items: center;

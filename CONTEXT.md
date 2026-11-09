@@ -56,6 +56,10 @@ _Unikaj_: link zwrotny, odwołanie
 Etykieta przypisana Notatce, wspólna dla wielu Notatek i będąca osobnym węzłem Grafu wiedzy.
 _Unikaj_: kategoria, słowo kluczowe, etykieta
 
+**Notatka ukryta przed AI**:
+Notatka z Tagiem `noai` albo leżąca w Folderze, którego Notatka folderu ma ten Tag; żadne narzędzie AI (serwer MCP) jej nie widzi ani nie zdradza jej istnienia.
+_Unikaj_: prywatna, tajna, zaszyfrowana
+
 **Powiązanie**:
 Zaakceptowane przez użytkownika połączenie dwóch Notatek zaproponowane przez AI, zapisane w metadanych Notatki, a nie w jej treści.
 _Unikaj_: relacja, link AI, sugestia

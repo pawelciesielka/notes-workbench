@@ -126,20 +126,29 @@ pub fn chunks(title: &str, body: &str) -> Vec<String> {
 }
 
 impl Store {
-    fn open(db: &Path, vault: &Path) -> Result<Store, String> {
-        if let Some(d) = db.parent() {
-            fs::create_dir_all(d).map_err(|e| e.to_string())?;
-        }
-        let conn = Connection::open(db).map_err(|e| e.to_string())?;
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
-             CREATE TABLE IF NOT EXISTS notes (path TEXT PRIMARY KEY, mtime INTEGER);
-             CREATE TABLE IF NOT EXISTS chunks (path TEXT, idx INTEGER, text TEXT, vec BLOB);
-             CREATE INDEX IF NOT EXISTS chunks_path ON chunks(path);",
-        )
-        .map_err(|e| e.to_string())?;
+    /// `readonly` (serwer MCP): plik otwierany tylko do odczytu, bez tworzenia tabel; zapisuje wyłącznie aplikacja.
+    fn open(db: &Path, vault: &Path, readonly: bool) -> Result<Store, String> {
+        let conn = if readonly {
+            Connection::open_with_flags(db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| e.to_string())?
+        } else {
+            if let Some(d) = db.parent() {
+                fs::create_dir_all(d).map_err(|e| e.to_string())?;
+            }
+            let conn = Connection::open(db).map_err(|e| e.to_string())?;
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+                 CREATE TABLE IF NOT EXISTS notes (path TEXT PRIMARY KEY, mtime INTEGER);
+                 CREATE TABLE IF NOT EXISTS chunks (path TEXT, idx INTEGER, text TEXT, vec BLOB);
+                 CREATE INDEX IF NOT EXISTS chunks_path ON chunks(path);",
+            )
+            .map_err(|e| e.to_string())?;
+            conn
+        };
         // Wektory innego modelu są bezużyteczne: zaczynamy od zera.
         let model: Option<String> = conn.query_row("SELECT value FROM meta WHERE key='model'", [], |r| r.get(0)).ok();
+        if readonly && model.as_deref() != Some(MODEL_NAME) {
+            return Err("Wektory policzono innym modelem: otwórz Skarbiec w aplikacji, żeby je przeliczyła.".into());
+        }
         if model.as_deref() != Some(MODEL_NAME) {
             conn.execute_batch("DELETE FROM notes; DELETE FROM chunks;").map_err(|e| e.to_string())?;
             conn.execute("INSERT OR REPLACE INTO meta VALUES ('model', ?1)", params![MODEL_NAME])
@@ -213,6 +222,29 @@ impl Semantic {
         *self.store.lock().unwrap() = None;
     }
 
+    /// Czy model jest już pobrany (wtedy wczytanie nie wymaga sieci).
+    pub fn model_cached(data_dir: &Path) -> bool {
+        let cache = data_dir.join("modele");
+        fs::read_dir(&cache).map(|mut d| d.next().is_some()).unwrap_or(false)
+    }
+
+    /// Tylko do odczytu (serwer MCP): wczytuje pobrany model i zapisane wektory, niczego nie przelicza.
+    pub fn load_readonly(&self, data_dir: &Path, vault: &Path) -> Result<(), String> {
+        if !Self::model_cached(data_dir) {
+            return Err("Wyszukiwanie po znaczeniu nie jest włączone: włącz je w aplikacji Notes Workbench (Szukaj → Znaczenie).".into());
+        }
+        self.ensure_model(data_dir)?;
+        let mut g = self.store.lock().unwrap();
+        if g.as_ref().map(|s| s.vault.as_path()) != Some(vault) {
+            let db = db_path(data_dir, vault);
+            if !db.exists() {
+                return Err("Brak wektorów dla tego Skarbca: otwórz go w aplikacji z włączonym wyszukiwaniem po znaczeniu.".into());
+            }
+            *g = Some(Store::open(&db, vault, true)?);
+        }
+        Ok(())
+    }
+
     fn ensure_model(&self, data_dir: &Path) -> Result<(), String> {
         if self.model.lock().unwrap().is_some() {
             return Ok(());
@@ -249,7 +281,7 @@ impl Semantic {
         {
             let mut g = self.store.lock().unwrap();
             if g.as_ref().map(|s| s.vault.as_path()) != Some(vault) {
-                *g = Some(Store::open(&db_path(data_dir, vault), vault)?);
+                *g = Some(Store::open(&db_path(data_dir, vault), vault, false)?);
             }
         }
         let mut paths = Vec::new();
@@ -364,6 +396,42 @@ impl Semantic {
     }
 }
 
+/// Wyszukiwanie hybrydowe: łączy miejsca w rankingu po znaczeniu i po słowach (Reciprocal Rank Fusion),
+/// bo sam model myli się przy nazwach własnych i skrótach, a same słowa nie łapią synonimów.
+pub fn fuse(sem: Vec<SemHit>, words: Vec<crate::search::Hit>, limit: usize) -> Vec<SemHit> {
+    let mut fused: HashMap<String, (f32, SemHit)> = HashMap::new();
+    for (rank, h) in sem.into_iter().enumerate() {
+        fused.insert(h.path.clone(), (1.0 / (60.0 + rank as f32), h));
+    }
+    for (rank, h) in words.into_iter().enumerate() {
+        let w = 1.0 / (60.0 + rank as f32);
+        match fused.get_mut(&h.path) {
+            Some((score, hit)) => {
+                *score += w;
+                // Fragment z wyszukiwania po słowach ma zaznaczone trafienia.
+                hit.snippet = h.snippet;
+            }
+            None => {
+                let hit = SemHit { path: h.path.clone(), title: h.title, folder: h.folder, snippet: h.snippet, score: 0.0 };
+                fused.insert(h.path, (w, hit));
+            }
+        }
+    }
+    let mut v: Vec<_> = fused.into_values().collect();
+    v.sort_by(|a, b| b.0.total_cmp(&a.0));
+    v.into_iter()
+        .take(limit)
+        .map(|(s, mut h)| {
+            h.score = s;
+            h
+        })
+        .collect()
+}
+
+/// Próg dla Notatek podobnych, dobrany na Skarbcu z AMNO: od ~0,92 wyniki są wyraźnie tematyczne,
+/// poniżej 0,90 to przypadek (mediana podobieństwa najbliższej Notatki to 0,91).
+pub const SIMILAR_MIN: f32 = 0.915;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -413,7 +481,7 @@ mod tests {
         let vault = PathBuf::from(std::env::var("NW_VAULT").unwrap());
         let data = PathBuf::from(std::env::var("NW_DATA").unwrap());
         let s = Semantic::default();
-        *s.store.lock().unwrap() = Some(Store::open(&db_path(&data, &vault), &vault).unwrap());
+        *s.store.lock().unwrap() = Some(Store::open(&db_path(&data, &vault), &vault, true).unwrap());
         let paths: Vec<String> = s.store.lock().unwrap().as_ref().unwrap().mtimes.keys().cloned().collect();
         let mut tops: Vec<f32> = paths.iter().take(300).filter_map(|p| s.similar(p, 1).first().map(|x| x.1)).collect();
         tops.sort_by(|a, b| a.total_cmp(b));

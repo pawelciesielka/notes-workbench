@@ -1,0 +1,15 @@
+[package]
+name = "notes-core"
+version = "0.1.0"
+edition = "2021"
+description = "Skarbiec Notes Workbench: odczyt i zapis Notatek, Graf wiedzy, wyszukiwanie"
+
+[dependencies]
+amno-import = { path = "../amno-import" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+pulldown-cmark = { version = "0.13", default-features = false }
+regex = "1"
+rusqlite = { version = "0.41", features = ["bundled"] }
+fastembed = { version = "7.7", default-features = false, features = ["onnx", "ort-download-binaries-rustls-tls", "hf-hub-rustls-tls"] }

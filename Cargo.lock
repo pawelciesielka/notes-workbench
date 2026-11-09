@@ -2691,7 +2691,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "notes-workbench"
+name = "notes-core"
 version = "0.1.0"
 dependencies = [
  "amno-import",
@@ -2700,6 +2700,26 @@ dependencies = [
  "pulldown-cmark",
  "regex",
  "rusqlite",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "notes-mcp"
+version = "0.1.0"
+dependencies = [
+ "notes-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "notes-workbench"
+version = "0.1.0"
+dependencies = [
+ "amno-import",
+ "chrono",
+ "notes-core",
  "serde",
  "serde_json",
  "tauri",

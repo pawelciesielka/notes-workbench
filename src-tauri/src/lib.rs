@@ -1,11 +1,7 @@
-mod index;
-mod search;
-mod semantic;
-mod vault;
-
-use index::Index;
-use search::Search;
-use semantic::Semantic;
+use notes_core::index::{self, Index};
+use notes_core::search::{self, Search};
+use notes_core::semantic::{self, Semantic};
+use notes_core::vault;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -250,42 +246,16 @@ fn semantic_enable(app: AppHandle, state: State<AppState>) -> Result<(), String>
 async fn semantic_search(state: State<'_, AppState>, query: String) -> Result<Vec<semantic::SemHit>, String> {
     let titles = |p: &str| state.with_index(|idx, _| idx.title(p)).ok().flatten();
     let sem = state.semantic.search(&query, 60, &titles)?;
-    // Wyszukiwanie hybrydowe: łączymy miejsca w rankingu po znaczeniu i po słowach (Reciprocal Rank Fusion),
-    // bo sam model myli się przy nazwach własnych i skrótach, a same słowa nie łapią synonimów.
     let words = state.with_search(|s, _| s.search(&query, 60))??;
-    let mut fused: std::collections::HashMap<String, (f32, semantic::SemHit)> = std::collections::HashMap::new();
-    for (rank, h) in sem.into_iter().enumerate() {
-        fused.insert(h.path.clone(), (1.0 / (60.0 + rank as f32), h));
-    }
-    for (rank, h) in words.hits.into_iter().enumerate() {
-        let w = 1.0 / (60.0 + rank as f32);
-        match fused.get_mut(&h.path) {
-            Some((score, hit)) => {
-                *score += w;
-                hit.snippet = h.snippet;
-            }
-            None => {
-                let hit = semantic::SemHit { path: h.path.clone(), title: h.title, folder: h.folder, snippet: h.snippet, score: 0.0 };
-                fused.insert(h.path, (w, hit));
-            }
-        }
-    }
-    let mut v: Vec<_> = fused.into_values().collect();
-    v.sort_by(|a, b| b.0.total_cmp(&a.0));
-    Ok(v.into_iter().take(50).map(|(s, mut h)| {
-        h.score = s;
-        h
-    }).collect())
+    Ok(semantic::fuse(sem, words.hits, 50))
 }
 
 #[tauri::command]
 fn similar_notes(state: State<AppState>, path: String) -> Result<Vec<index::NoteRef>, String> {
-    // Próg dobrany na Skarbcu z AMNO: od ~0,92 wyniki są wyraźnie tematyczne, poniżej 0,90 to przypadek
-    // (mediana podobieństwa najbliższej Notatki to 0,91).
     let sims = state.semantic.similar(&path, 6);
     state.with_index(|idx, _| {
         sims.into_iter()
-            .filter(|(_, s)| *s > 0.915)
+            .filter(|(_, s)| *s > semantic::SIMILAR_MIN)
             .filter_map(|(p, _)| idx.title(&p).map(|title| index::NoteRef { stem: String::new(), path: p, title }))
             .collect()
     })
@@ -322,6 +292,14 @@ fn save_note(state: State<AppState>, path: String, body: String, expected: Strin
 #[tauri::command]
 fn set_note_title(state: State<AppState>, path: String, title: String) -> Result<vault::NoteData, String> {
     let n = vault::set_title(&state.vault()?, &path, &title)?;
+    state.changed(None, Some(&path))?;
+    Ok(n)
+}
+
+/// Oznacza Notatkę jako niedostępną dla AI (Tag `noai` we frontmatterze) albo zdejmuje oznaczenie.
+#[tauri::command]
+fn set_noai(state: State<AppState>, path: String, on: bool) -> Result<vault::NoteData, String> {
+    let n = vault::set_fm_tag(&state.vault()?, &path, index::NOAI_TAG, on)?;
     state.changed(None, Some(&path))?;
     Ok(n)
 }
@@ -436,6 +414,7 @@ pub fn run() {
             graph,
             save_note,
             set_note_title,
+            set_noai,
             create_note,
             trash_note,
             restore_note,

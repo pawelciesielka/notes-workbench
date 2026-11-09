@@ -1,5 +1,5 @@
 [workspace]
-members = ["src-tauri", "crates/amno-import"]
+members = ["src-tauri", "crates/amno-import", "crates/notes-core", "crates/notes-mcp"]
 resolver = "2"
 
 [profile.release]

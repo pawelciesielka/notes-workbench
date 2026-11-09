@@ -133,6 +133,31 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
 
   if (!note) return <div className="note muted pad">Wczytywanie…</div>;
 
+  // Ukrycie przed AI: własny Tag noai (frontmatter albo treść) albo odziedziczony po Notatce folderu.
+  const noai = !!summary?.noai.includes(path);
+  const ownNoai = !!links?.tags.some((t) => t.toLowerCase() === "noai");
+  const noaiInFm = /\bnoai\b/i.test(note.frontmatter);
+  const toggleNoai = async () => {
+    if (noai && !ownNoai) {
+      onError("Notatka jest ukryta przed AI, bo Tag #noai ma Notatka folderu nad nią. Zdejmij go tam.");
+      return;
+    }
+    if (noai && !noaiInFm) {
+      onError("Tag #noai jest wpisany w treści Notatki: usuń go w edycji, żeby udostępnić Notatkę AI.");
+      return;
+    }
+    try {
+      await flush();
+      const n = await api.setNoai(path, !noai);
+      ref.current.raw = n.raw;
+      setNote(n);
+      onChanged(false);
+      loadLinks();
+    } catch (e) {
+      onError(String(e));
+    }
+  };
+
   const commitTitle = async () => {
     if (title.trim() === note.title) return;
     try {
@@ -304,6 +329,19 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
               <button onClick={restore}>Przywróć z Kosza</button>
             ) : (
               <>
+                <button
+                  className={`toggle${noai ? " on noai-on" : ""}`}
+                  onClick={() => void toggleNoai()}
+                  title={
+                    noai
+                      ? ownNoai
+                        ? "Notatka jest ukryta przed AI (serwer MCP jej nie widzi). Kliknij, aby udostępnić."
+                        : "Ukryta przed AI przez Tag #noai na Notatce folderu."
+                      : "Ukryj Notatkę przed AI: serwer MCP nie pokaże jej Claude (dodaje Tag noai)."
+                  }
+                >
+                  {noai ? "🔒 Ukryta przed AI" : "Ukryj przed AI"}
+                </button>
                 <button className={`toggle${edit ? " on" : ""}`} onClick={() => void toggleEdit()} title="Ctrl+E">
                   {edit ? "Gotowe" : "Edytuj"}
                 </button>

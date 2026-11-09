@@ -161,6 +161,7 @@ export default function App() {
   }
 
   const vaultName = vault.split(/[\\/]/).filter(Boolean).pop();
+  const noaiSet = new Set(summary?.noai ?? []);
   const selected = main.kind === "note" ? main.path : null;
 
   return (
@@ -210,7 +211,12 @@ export default function App() {
             <TagsPanel summary={summary} selected={tag} activeNote={selected} onSelect={setTag} onOpen={openNote} />
           </div>
         ) : (
-          <Tree nodes={side === "trash" ? trashTree : tree} selected={selected} onOpen={openNote} />
+          <Tree
+            nodes={side === "trash" ? trashTree : tree}
+            selected={selected}
+            noai={noaiSet}
+            onOpen={openNote}
+          />
         )}
         {report && (
           <button className={`side-report${report.ok ? "" : " bad"}`} onClick={() => setMain({ kind: "report" })}>

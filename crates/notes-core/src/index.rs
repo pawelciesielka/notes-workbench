@@ -64,7 +64,12 @@ pub struct TagCount {
 pub struct Summary {
     pub notes: Vec<NoteRef>,
     pub tags: Vec<TagCount>,
+    /// Notatki niedostępne dla AI (Tag `noai` na Notatce albo na Notatce folderu nad nią).
+    pub noai: Vec<String>,
 }
+
+/// Tag, który ukrywa Notatkę (a na Notatce folderu: cały Folder) przed AI i serwerem MCP.
+pub const NOAI_TAG: &str = "noai";
 
 #[derive(Serialize)]
 pub struct Backlink {
@@ -198,7 +203,7 @@ fn scan(body: &str) -> Vec<Found> {
 }
 
 /// Wartości listy z frontmattera: `klucz: [a, "b"]`, `klucz: a, b` albo linie `- a` pod kluczem.
-fn fm_list(fm: &str, key: &str) -> Vec<String> {
+pub fn fm_list(fm: &str, key: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut in_block = false;
     let clean = |s: &str| {
@@ -368,7 +373,35 @@ impl Index {
                 tags.entry(tag_key(t)).or_insert_with(|| (t.clone(), 0)).1 += 1;
             }
         }
-        Summary { notes, tags: tags.into_values().map(|(tag, count)| TagCount { tag, count }).collect() }
+        let mut noai: Vec<String> = self.noai().into_iter().collect();
+        noai.sort();
+        Summary { notes, tags: tags.into_values().map(|(tag, count)| TagCount { tag, count }).collect(), noai }
+    }
+
+    fn has_noai(&self, path: &str) -> bool {
+        self.notes.get(path).is_some_and(|n| n.tags.iter().any(|t| tag_key(t) == NOAI_TAG))
+    }
+
+    /// Czy Notatka jest niedostępna dla AI: ma Tag `noai` albo ma go Notatka folderu
+    /// któregoś Folderu nad nią (`A/B/B.md` blokuje wszystko w `A/B`).
+    pub fn is_noai(&self, path: &str) -> bool {
+        if self.has_noai(path) {
+            return true;
+        }
+        let mut dir = parent(path);
+        while !dir.is_empty() {
+            let name = dir.rsplit('/').next().unwrap_or(dir);
+            if self.has_noai(&format!("{dir}/{name}.md")) {
+                return true;
+            }
+            dir = parent(dir);
+        }
+        false
+    }
+
+    /// Wszystkie Notatki niedostępne dla AI.
+    pub fn noai(&self) -> HashSet<String> {
+        self.notes.keys().filter(|p| self.is_noai(p)).cloned().collect()
     }
 
     pub fn tag_notes(&self, tag: &str) -> Vec<NoteRef> {
@@ -504,6 +537,21 @@ mod tests {
         }
         let g = idx.graph();
         println!("krawędzi {}", g.edges.len());
+    }
+
+    #[test]
+    fn noai_on_note_and_folder() {
+        let mut idx = Index::default();
+        idx.insert(parse_note("Jawna.md".into(), "x"));
+        idx.insert(parse_note("Tajna.md".into(), "hasło #noai"));
+        idx.insert(parse_note("Hasła/Hasła.md".into(), "---\ntags: [NoAI]\n---\nFolder z hasłami"));
+        idx.insert(parse_note("Hasła/Bank.md".into(), "pin"));
+        idx.insert(parse_note("Hasła/Pod/Głęboko.md".into(), "x"));
+        idx.insert(parse_note("Inne/Hasła.md".into(), "x"));
+        let mut blocked: Vec<_> = idx.noai().into_iter().collect();
+        blocked.sort();
+        assert_eq!(blocked, vec!["Hasła/Bank.md", "Hasła/Hasła.md", "Hasła/Pod/Głęboko.md", "Tajna.md"]);
+        assert!(!idx.is_noai("Inne/Hasła.md"));
     }
 
     #[test]

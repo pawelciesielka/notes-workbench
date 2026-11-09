@@ -9,6 +9,26 @@ albo `tags:` we frontmatterze), Graf wiedzy (cały Skarbiec albo wokół Notatki
 Etap 3: wyszukiwanie (Ctrl+Shift+F) po słowach (SQLite FTS5) i po znaczeniu (lokalny model multilingual-e5-small,
 pobierany raz do `%LOCALAPPDATA%\eu.ciesielka.notesworkbench\modele`; wektory w `…\wektory`, poza Skarbcem),
 „Podobne treścią” pod Notatką.
+Etap 4: serwer MCP tylko do odczytu (`crates/notes-mcp`) dla Claude: `search_notes`, `read_note`, `list_notes`,
+`note_links`, `list_tags`. Notatki z Tagiem `noai` (przycisk „Ukryj przed AI”; na Notatce folderu ukrywa cały Folder)
+są dla serwera niewidoczne.
+
+## Serwer MCP
+
+```bash
+cargo build --release -p notes-mcp
+```
+
+Plik `target/release/notes-mcp.exe` skopiuj poza AppData (np. `%USERPROFILE%\.notes-workbench\bin`), bo Claude
+ze Sklepu Windows przekierowuje zapisy w AppData do swojego katalogu. Wpis w `claude_desktop_config.json`
+(Claude Desktop → Ustawienia → Developer → Edit Config):
+
+```json
+"notes-workbench": { "command": "C:\\Users\\<ty>\\.notes-workbench\\bin\\notes-mcp.exe", "args": ["--vault", "C:\\Notatki"] }
+```
+
+Bez `--vault` serwer bierze Skarbiec otwarty w aplikacji. Wyszukiwanie po znaczeniu działa, gdy jest włączone
+w aplikacji (serwer tylko czyta model i wektory, niczego nie przelicza).
 
 ## Wymagania
 
@@ -53,9 +73,11 @@ Wynik trafia do `.notes-workbench/import/raport.json` i `raport.md` w Skarbcu (w
   - `md.rs`: zapis Markdown z wstawkami HTML (ADR 0001)
   - `verify.rs`: porównanie tekstu, obrazów i odnośników
   - `lib.rs`: zapis Skarbca, Załączniki, Kosz, Raport importu
-- `src-tauri/src/`: komendy aplikacji i protokół `vault://` (obrazy, PDF ze Skarbca)
+- `crates/notes-core/`: wspólny rdzeń aplikacji i serwera MCP
   - `vault.rs`: drzewo, odczyt i zapis Notatek, Kosz
-  - `index.rs`: indeks Linków, Backlinków i Tagów w pamięci (pomija kod i HTML), Graf wiedzy
+  - `index.rs`: indeks Linków, Backlinków i Tagów w pamięci (pomija kod i HTML), Graf wiedzy, `#noai`
   - `search.rs`: wyszukiwanie pełnotekstowe (FTS5 w pamięci, synchronizacja po dacie modyfikacji)
   - `semantic.rs`: wektory fragmentów Notatek, wyszukiwanie po znaczeniu, Notatki podobne
+- `crates/notes-mcp/`: serwer MCP (stdio, JSON-RPC), tylko do odczytu
+- `src-tauri/src/`: komendy aplikacji i protokół `vault://` (obrazy, PDF ze Skarbca)
 - `src/`: UI (React): drzewo, widok i edytor Notatki (CodeMirror), Tagi, Graf wiedzy (force-graph), Raport, kreator Importu

@@ -40,7 +40,8 @@ export type Report = {
 
 export type NoteRef = { path: string; title: string; stem: string };
 export type TagCount = { tag: string; count: number };
-export type Summary = { notes: NoteRef[]; tags: TagCount[] };
+/** `noai`: Notatki niedostępne dla AI (Tag noai na Notatce albo na Notatce folderu nad nią). */
+export type Summary = { notes: NoteRef[]; tags: TagCount[]; noai: string[] };
 
 /** Link albo Tag w treści; pozycje w znakach JavaScriptu. */
 export type Span = {
@@ -86,6 +87,7 @@ export const api = {
   tagNotes: (tag: string) => invoke<NoteRef[]>("tag_notes", { tag }),
   graph: () => invoke<Graph>("graph"),
   saveNote: (path: string, body: string, expected: string) => invoke<NoteData>("save_note", { path, body, expected }),
+  setNoai: (path: string, on: boolean) => invoke<NoteData>("set_noai", { path, on }),
   setTitle: (path: string, title: string) => invoke<NoteData>("set_note_title", { path, title }),
   createNote: (folder: string, title: string) => invoke<string>("create_note", { folder, title }),
   trashNote: (path: string) => invoke<string>("trash_note", { path }),
