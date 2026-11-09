@@ -9,6 +9,26 @@ import { TagsPanel } from "./components/TagsPanel";
 import { GraphView } from "./components/GraphView";
 import { SearchPanel } from "./components/SearchPanel";
 import { ProposalsView } from "./components/ProposalsView";
+import { useTheme, type ThemeMode } from "./lib/theme";
+import {
+  CheckIcon,
+  FileIcon,
+  FolderIcon,
+  FolderOpenAction,
+  GraphIcon,
+  ImportIcon,
+  MonitorIcon,
+  MoonIcon,
+  PlusIcon,
+  ReportIcon,
+  SearchIcon,
+  SparkIcon,
+  SunIcon,
+  TagIcon,
+  TrashIcon,
+  VaultIcon,
+  XIcon,
+} from "./components/Icons";
 
 type Main =
   | { kind: "note"; path: string; edit?: boolean }
@@ -36,6 +56,7 @@ export default function App() {
   const [lastNote, setLastNote] = useState<string | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [proposalCount, setProposalCount] = useState(0);
+  const [themeMode, setThemeMode, theme] = useTheme();
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -171,49 +192,82 @@ export default function App() {
   const noaiSet = new Set(summary?.noai ?? []);
   const selected = main.kind === "note" ? main.path : null;
 
+  const nextTheme: Record<ThemeMode, ThemeMode> = { auto: "light", light: "dark", dark: "auto" };
+  const themeLabel: Record<ThemeMode, string> = {
+    auto: "Motyw: jak w Windows",
+    light: "Motyw: jasny",
+    dark: "Motyw: ciemny",
+  };
+  const trashCount = countNotes(trashTree);
+
   return (
     <div className="app">
       <aside className="sidebar">
         <div className="side-head">
           <div className="vault-name" title={vault}>
-            {vaultName}
+            <span className="vault-icon">
+              <VaultIcon size={15} />
+            </span>
+            <span>{vaultName}</span>
           </div>
           <div className="side-actions">
-            <button onClick={openVault} title="Otwórz inny Skarbiec">
-              Otwórz…
+            <button
+              className="icon-btn"
+              onClick={() => setThemeMode(nextTheme[themeMode])}
+              title={`${themeLabel[themeMode]} (kliknij, aby zmienić)`}
+              aria-label={themeLabel[themeMode]}
+            >
+              {themeMode === "auto" ? <MonitorIcon /> : themeMode === "light" ? <SunIcon /> : <MoonIcon />}
             </button>
-            <button onClick={() => setMain({ kind: "import" })} title="Import z AMNO do nowego Skarbca">
-              Import…
+            <button className="icon-btn" onClick={openVault} title="Otwórz inny Skarbiec" aria-label="Otwórz inny Skarbiec">
+              <FolderOpenAction />
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => setMain({ kind: "import" })}
+              title="Import z AMNO do nowego Skarbca"
+              aria-label="Import z AMNO"
+            >
+              <ImportIcon />
             </button>
           </div>
         </div>
         <div className="side-tools">
-          <button className="primary" onClick={() => void newNote()} title="Nowa Notatka w Folderze bieżącej Notatki">
-            + Notatka
-          </button>
-          <button className={main.kind === "graph" ? "on" : ""} onClick={() => setMain({ kind: "graph" })}>
-            Graf wiedzy
+          <button className="primary new-note" onClick={() => void newNote()} title="Nowa Notatka w Folderze bieżącej Notatki">
+            <PlusIcon size={15} /> Nowa Notatka
           </button>
           <button
-            className={main.kind === "proposals" ? "on" : ""}
-            onClick={() => setMain({ kind: "proposals" })}
-            title="Powiązania i Tagi zaproponowane przez AI"
+            className={`icon-btn${main.kind === "graph" ? " on" : ""}`}
+            onClick={() => setMain({ kind: "graph" })}
+            title="Graf wiedzy"
+            aria-label="Graf wiedzy"
           >
-            Propozycje{proposalCount > 0 && <span className="badge">{proposalCount}</span>}
+            <GraphIcon />
+          </button>
+          <button
+            className={`icon-btn${main.kind === "proposals" ? " on" : ""}`}
+            onClick={() => setMain({ kind: "proposals" })}
+            title="Propozycje powiązań i Tagów od AI"
+            aria-label="Propozycje"
+          >
+            <SparkIcon />
+            {proposalCount > 0 && <span className="badge">{proposalCount}</span>}
           </button>
         </div>
-        <div className="side-tabs">
-          <button className={`tab${side === "notes" ? " on" : ""}`} onClick={() => setSide("notes")}>
-            Notatki
+        <div className="side-tabs" role="tablist">
+          <button className={`tab${side === "notes" ? " on" : ""}`} onClick={() => setSide("notes")} title="Drzewo Notatek">
+            <FolderIcon size={14} /> Notatki
           </button>
-          <button className={`tab${side === "search" ? " on" : ""}`} onClick={() => setSide("search")}>
-            Szukaj
+          <button className={`tab${side === "search" ? " on" : ""}`} onClick={() => setSide("search")} title="Szukaj (Ctrl+Shift+F)">
+            <SearchIcon size={14} /> Szukaj
           </button>
-          <button className={`tab${side === "tags" ? " on" : ""}`} onClick={() => setSide("tags")}>
-            Tagi ({summary?.tags.length ?? 0})
+          <button className={`tab${side === "tags" ? " on" : ""}`} onClick={() => setSide("tags")} title="Tagi">
+            <TagIcon size={14} /> Tagi
+            {(summary?.tags.length ?? 0) > 0 && <span className="tab-count">{summary?.tags.length}</span>}
           </button>
-          <button className={`tab${side === "trash" ? " on" : ""}`} onClick={() => setSide("trash")}>
-            Kosz ({countNotes(trashTree)})
+          <button className={`tab${side === "trash" ? " on" : ""}`} onClick={() => setSide("trash")} title="Kosz">
+            <TrashIcon size={14} /> Kosz
+            {trashCount > 0 && <span className="tab-count">{trashCount}</span>}
           </button>
         </div>
         {/* Panel wyszukiwania zostaje w drzewie DOM, żeby po przełączeniu zakładek nie gubić wyników. */}
@@ -233,15 +287,21 @@ export default function App() {
           />
         )}
         {report && (
-          <button className={`side-report${report.ok ? "" : " bad"}`} onClick={() => setMain({ kind: "report" })}>
-            Raport importu {report.ok ? "✓" : `(${report.errors} błędów)`}
-          </button>
+          <div className="side-foot">
+            <button
+              className={`ghost side-report${report.ok ? "" : " bad"}${main.kind === "report" ? " on" : ""}`}
+              onClick={() => setMain({ kind: "report" })}
+            >
+              <ReportIcon size={15} /> Raport importu {report.ok ? <CheckIcon size={14} /> : `(${report.errors} błędów)`}
+            </button>
+          </div>
         )}
       </aside>
       <main className="main">
         {error && (
-          <div className="banner bad toast" onClick={() => setError("")} title="Kliknij, aby zamknąć">
-            {error}
+          <div className="banner bad toast" onClick={() => setError("")} title="Kliknij, aby zamknąć" role="alert">
+            <span>{error}</span>
+            <XIcon size={14} />
           </div>
         )}
         {main.kind === "note" && (
@@ -257,7 +317,7 @@ export default function App() {
           />
         )}
         {main.kind === "graph" && (
-          <GraphView center={lastNote} onOpen={openNote} onTag={openTag} onError={onError} />
+          <GraphView center={lastNote} theme={theme} onOpen={openNote} onTag={openTag} onError={onError} />
         )}
         {main.kind === "proposals" && (
           <ProposalsView
@@ -278,7 +338,27 @@ export default function App() {
             <ImportWizard onDone={onImported} onCancel={() => setMain({ kind: "empty" })} />
           </div>
         )}
-        {main.kind === "empty" && <div className="empty muted">Wybierz Notatkę z drzewa albo utwórz nową.</div>}
+        {main.kind === "empty" && (
+          <div className="empty">
+            <div className="empty-icon">
+              <FileIcon size={26} />
+            </div>
+            <h2>Wybierz Notatkę</h2>
+            <div>Otwórz Notatkę z drzewa po lewej albo utwórz nową.</div>
+            <div className="shortcuts">
+              <kbd>Ctrl+Shift+F</kbd>
+              <span>Szukaj w treści</span>
+              <kbd>Ctrl+E</kbd>
+              <span>Edycja i podgląd Notatki</span>
+              <kbd>Ctrl+S</kbd>
+              <span>Zapisz od razu (zapis i tak dzieje się sam)</span>
+              <kbd>↑ ↓ ← →</kbd>
+              <span>Poruszanie się po drzewie</span>
+              <kbd>[[</kbd>
+              <span>Link do innej Notatki (w edycji)</span>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

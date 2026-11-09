@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type NoteRef, type Summary } from "../lib/api";
+import { ChevronRight, FileIcon, TagIcon } from "./Icons";
 
 type Props = {
   summary: Summary | null;
@@ -31,23 +32,34 @@ export function TagsPanel({ summary, selected, activeNote, onSelect, onOpen }: P
         const on = selected?.toLowerCase() === t.tag.toLowerCase();
         return (
           <div key={t.tag}>
-            <div className={`tree-row${on ? " active" : ""}`} onClick={() => onSelect(on ? null : t.tag)}>
-              <span className="tree-icon">{on ? "▾" : "▸"}</span>
-              <span className="tree-label">#{t.tag}</span>
-              <span className="count">{t.count}</span>
+            <div className="tree-row folder" onClick={() => onSelect(on ? null : t.tag)}>
+              <span className={`tree-chevron${on ? " open" : ""}`}>
+                <ChevronRight size={14} />
+              </span>
+              <span className="tree-icon tag-icon">
+                <TagIcon size={14} />
+              </span>
+              <span className="tree-label">{t.tag}</span>
+              <span className="tree-count">{t.count}</span>
             </div>
-            {on &&
-              notes.map((n) => (
-                <div
-                  key={n.path}
-                  className={`tree-row${activeNote === n.path ? " active" : ""}`}
-                  style={{ paddingLeft: 30 }}
-                  title={n.path}
-                  onClick={() => onOpen(n.path)}
-                >
-                  <span className="tree-label">{n.title}</span>
-                </div>
-              ))}
+            {on && (
+              <div className="tree-children">
+                {notes.map((n) => (
+                  <div
+                    key={n.path}
+                    className={`tree-row leaf${activeNote === n.path ? " active" : ""}`}
+                    title={n.path}
+                    onClick={() => onOpen(n.path)}
+                  >
+                    <span className="tree-chevron spacer" />
+                    <span className="tree-icon">
+                      <FileIcon size={15} />
+                    </span>
+                    <span className="tree-label">{n.title}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         );
       })}

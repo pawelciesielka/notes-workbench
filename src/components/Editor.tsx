@@ -3,6 +3,8 @@ import { EditorView, keymap, placeholder } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { basicSetup } from "codemirror";
 import { markdown } from "@codemirror/lang-markdown";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
 import { autocompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
 import type { Summary } from "../lib/api";
 
@@ -55,17 +57,40 @@ function completions(getSummary: () => Summary | null) {
 }
 
 const theme = EditorView.theme({
-  "&": { height: "100%", fontSize: "14px", backgroundColor: "var(--bg)", color: "var(--fg)" },
-  ".cm-scroller": { fontFamily: 'Consolas, "Courier New", monospace', lineHeight: "1.55" },
+  "&": { height: "100%", fontSize: "14px", backgroundColor: "var(--surface)", color: "var(--fg)" },
+  ".cm-scroller": { fontFamily: "var(--mono)", lineHeight: "1.6" },
   ".cm-content": { caretColor: "var(--fg)", padding: "12px 0" },
   ".cm-gutters": { backgroundColor: "var(--bg-side)", color: "var(--muted)", border: "none" },
-  ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: "color-mix(in srgb, var(--bg-active) 40%, transparent)" },
+  ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: "var(--accent-softer)" },
   "&.cm-focused": { outline: "none" },
   ".cm-tooltip": { backgroundColor: "var(--bg)", border: "1px solid var(--border)", color: "var(--fg)" },
-  ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: "var(--bg-active)", color: "var(--fg)" },
+  ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: "var(--accent-soft)", color: "var(--fg)" },
   ".cm-completionDetail": { color: "var(--muted)", marginLeft: "1em", fontStyle: "normal" },
-  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": { backgroundColor: "var(--bg-active) !important" },
+  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": { backgroundColor: "var(--accent-soft) !important" },
+  ".cm-cursor": { borderLeftColor: "var(--fg)" },
+  ".cm-searchMatch": { backgroundColor: "var(--mark)" },
+  ".cm-panels": { backgroundColor: "var(--bg-side)", color: "var(--fg)", borderColor: "var(--border)" },
 });
+
+/** Kolory składni ze zmiennych motywu, żeby były czytelne w trybie jasnym i ciemnym. */
+const highlight = HighlightStyle.define([
+  { tag: t.heading, fontWeight: "700", color: "var(--fg)" },
+  { tag: t.heading1, fontSize: "1.25em" },
+  { tag: t.heading2, fontSize: "1.12em" },
+  { tag: t.strong, fontWeight: "700" },
+  { tag: t.emphasis, fontStyle: "italic" },
+  { tag: t.strikethrough, textDecoration: "line-through" },
+  { tag: [t.link, t.url], color: "var(--accent)" },
+  { tag: t.monospace, color: "var(--code-fg)" },
+  { tag: t.quote, color: "var(--muted)", fontStyle: "italic" },
+  { tag: [t.processingInstruction, t.meta, t.contentSeparator], color: "var(--faint)" },
+  { tag: [t.angleBracket, t.tagName, t.attributeName], color: "var(--faint)" },
+  { tag: t.attributeValue, color: "var(--tag)" },
+  { tag: [t.keyword, t.operatorKeyword], color: "var(--accent)" },
+  { tag: [t.string, t.special(t.string)], color: "var(--ok-fg)" },
+  { tag: [t.number, t.bool, t.null], color: "var(--tag)" },
+  { tag: t.comment, color: "var(--faint)", fontStyle: "italic" },
+]);
 
 export function Editor({ value, summary, onChange, onSave }: Props) {
   const host = useRef<HTMLDivElement>(null);
@@ -99,6 +124,7 @@ export function Editor({ value, summary, onChange, onSave }: Props) {
             if (u.docChanged) latest.current.onChange(u.state.doc.toString());
           }),
           theme,
+          syntaxHighlighting(highlight),
         ],
       }),
     });

@@ -18,6 +18,7 @@ import {
   type Summary,
 } from "../lib/api";
 import { Editor } from "./Editor";
+import { CheckIcon, LinkIcon, LockIcon, PencilIcon, SparkIcon, TrashIcon, UnlockIcon, XIcon } from "./Icons";
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|bmp|webp|svg|ico)$/i;
 const TRASH = ".kosz/";
@@ -310,7 +311,17 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
     <div className={`note-wrap${pdf ? " with-pdf" : ""}`}>
       <div className={`note${edit ? " editing" : ""}`}>
         <div className="note-head">
-          <div className="crumbs">{crumbs.length ? crumbs.join(" / ") : "Skarbiec"}</div>
+          <div className="crumbs">
+            {inTrash && <span className="tag-name">Kosz ·&nbsp;</span>}
+            {(crumbs[0] === ".kosz" ? crumbs.slice(1) : crumbs).length === 0
+              ? "Skarbiec"
+              : (crumbs[0] === ".kosz" ? crumbs.slice(1) : crumbs).map((c, i) => (
+                  <span key={i}>
+                    {i > 0 && <span className="sep">›</span>}
+                    {c}
+                  </span>
+                ))}
+          </div>
           <div className="note-title-row">
             {edit ? (
               <input
@@ -324,32 +335,43 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
             ) : (
               <h1 className="note-title">{note.title}</h1>
             )}
-            {edit && <span className={`save-state ${save}`}>{saveLabel}</span>}
-            {inTrash ? (
-              <button onClick={restore}>Przywróć z Kosza</button>
-            ) : (
-              <>
-                <button
-                  className={`toggle${noai ? " on noai-on" : ""}`}
-                  onClick={() => void toggleNoai()}
-                  title={
-                    noai
-                      ? ownNoai
-                        ? "Notatka jest ukryta przed AI (serwer MCP jej nie widzi). Kliknij, aby udostępnić."
-                        : "Ukryta przed AI przez Tag #noai na Notatce folderu."
-                      : "Ukryj Notatkę przed AI: serwer MCP nie pokaże jej Claude (dodaje Tag noai)."
-                  }
-                >
-                  {noai ? "🔒 Ukryta przed AI" : "Ukryj przed AI"}
+            <div className="note-actions">
+              {edit && <span className={`save-state ${save}`}>{saveLabel}</span>}
+              {inTrash ? (
+                <button className="primary" onClick={restore}>
+                  Przywróć z Kosza
                 </button>
-                <button className={`toggle${edit ? " on" : ""}`} onClick={() => void toggleEdit()} title="Ctrl+E">
-                  {edit ? "Gotowe" : "Edytuj"}
-                </button>
-                <button onClick={() => void toTrash()} title="Przenieś do Kosza">
-                  🗑
-                </button>
-              </>
-            )}
+              ) : (
+                <>
+                  <button
+                    className={`ghost toggle${noai ? " noai-on" : ""}`}
+                    onClick={() => void toggleNoai()}
+                    title={
+                      noai
+                        ? ownNoai
+                          ? "Notatka jest ukryta przed AI (serwer MCP jej nie widzi). Kliknij, aby udostępnić."
+                          : "Ukryta przed AI przez Tag #noai na Notatce folderu."
+                        : "Ukryj Notatkę przed AI: serwer MCP nie pokaże jej Claude (dodaje Tag noai)."
+                    }
+                  >
+                    {noai ? <LockIcon size={15} /> : <UnlockIcon size={15} />}
+                    {noai ? "Ukryta przed AI" : "Widoczna dla AI"}
+                  </button>
+                  <button className={edit ? "primary" : ""} onClick={() => void toggleEdit()} title="Ctrl+E">
+                    {edit ? <CheckIcon size={15} /> : <PencilIcon size={15} />}
+                    {edit ? "Gotowe" : "Edytuj"}
+                  </button>
+                  <button
+                    className="icon-btn danger"
+                    onClick={() => void toTrash()}
+                    title="Przenieś do Kosza"
+                    aria-label="Przenieś do Kosza"
+                  >
+                    <TrashIcon />
+                  </button>
+                </>
+              )}
+            </div>
           </div>
           {!edit && links && links.tags.length > 0 && (
             <div className="note-tags">
@@ -385,7 +407,9 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
               <section className="backlinks">
                 {links.related.length > 0 && (
                   <>
-                    <h2>Powiązane ({links.related.length})</h2>
+                    <h2>
+                      <SparkIcon size={13} /> Powiązane ({links.related.length})
+                    </h2>
                     <ul>
                       {links.related.map((r) => (
                         <li key={r.path}>
@@ -399,14 +423,16 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
                 )}
                 {links.backlinks.length > 0 && (
                   <>
-                    <h2>Linki do tej Notatki ({links.backlinks.length})</h2>
+                    <h2>
+                      <LinkIcon size={13} /> Linki do tej Notatki ({links.backlinks.length})
+                    </h2>
                     <ul>
                       {links.backlinks.map((b) => (
                         <li key={b.path}>
                           <a href="#" className="wikilink" onClick={(e) => (e.preventDefault(), onOpen(b.path))}>
                             {b.title}
                           </a>
-                          {b.related && <span className="muted"> (Powiązanie)</span>}
+                          {b.related && <span className="muted small"> · Powiązanie</span>}
                           {b.lines.map((l, i) => (
                             <div key={i} className="backlink-line">
                               {l}
@@ -446,8 +472,8 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
               {fileName(pdf)}
             </span>
             <button onClick={() => api.openVaultFile(pdf).catch((e) => onError(String(e)))}>Otwórz w programie</button>
-            <button onClick={() => setPdf(null)} aria-label="Zamknij podgląd">
-              ✕
+            <button className="icon-btn" onClick={() => setPdf(null)} aria-label="Zamknij podgląd" title="Zamknij podgląd">
+              <XIcon />
             </button>
           </div>
           <iframe className="pdf-frame" src={vaultUrl(pdf)} title={fileName(pdf)} />

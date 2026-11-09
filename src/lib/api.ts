@@ -1,4 +1,11 @@
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke as tauriInvoke } from "@tauri-apps/api/core";
+
+/** Poza Tauri (podgląd interfejsu w przeglądarce, tylko tryb deweloperski) odpowiadają przykładowe dane. */
+const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (inTauri || !import.meta.env.DEV) return tauriInvoke<T>(cmd, args);
+  return import("./mock").then((m) => m.mockInvoke<T>(cmd, args));
+}
 
 export type TreeNode = {
   name: string;

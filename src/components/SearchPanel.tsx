@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, type SearchHit, type SemanticInfo } from "../lib/api";
+import { SearchIcon, XIcon } from "./Icons";
 
 type Props = {
   activeNote: string | null;
@@ -115,17 +116,26 @@ export function SearchPanel({ activeNote, focusKey, onOpen, onError }: Props) {
 
   return (
     <div className="tree">
-      <input
-        ref={input}
-        className="tree-filter"
-        placeholder={mode === "words" ? "Szukaj w treści… (Ctrl+Shift+F)" : "Opisz, czego szukasz…"}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && hits?.[0]) onOpen(hits[0].path);
-          if (e.key === "Escape") setQuery("");
-        }}
-      />
+      <div className="search-top">
+        <label className="search-field">
+          <SearchIcon size={14} />
+          <input
+            ref={input}
+            placeholder={mode === "words" ? "Szukaj w treści…" : "Opisz, czego szukasz…"}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && hits?.[0]) onOpen(hits[0].path);
+              if (e.key === "Escape") setQuery("");
+            }}
+          />
+          {query && (
+            <button className="icon-btn tiny" onClick={() => setQuery("")} aria-label="Wyczyść">
+              <XIcon size={12} />
+            </button>
+          )}
+        </label>
+      </div>
       <div className="tabs search-modes">
         <button className={`tab${mode === "words" ? " on" : ""}`} onClick={() => setMode("words")}>
           Słowa

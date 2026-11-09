@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph from "force-graph";
 import { api, type Graph } from "../lib/api";
+import { GraphIcon } from "./Icons";
 
 type Props = {
   /** Notatka, wokół której pokazujemy graf lokalny. */
   center: string | null;
+  /** Motyw wyświetlany: graf rysuje na canvasie, więc przy zmianie trzeba go przerysować. */
+  theme: "light" | "dark";
   onOpen: (path: string) => void;
   onTag: (tag: string) => void;
   onError: (msg: string) => void;
@@ -34,7 +37,7 @@ function neighbourhood(g: Graph, center: string, depth: number): Set<string> {
   return seen;
 }
 
-export function GraphView({ center, onOpen, onTag, onError }: Props) {
+export function GraphView({ center, theme, onOpen, onTag, onError }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const [graph, setGraph] = useState<Graph | null>(null);
   const [local, setLocal] = useState(!!center);
@@ -70,7 +73,7 @@ export function GraphView({ center, onOpen, onTag, onError }: Props) {
   useEffect(() => {
     if (!host.current || !data) return;
     const el = host.current;
-    const colors = { note: css("--accent"), tag: css("--tag"), center: css("--center"), fg: css("--fg"), edge: css("--border") };
+    const colors = { note: css("--accent"), tag: css("--tag"), center: css("--center"), fg: css("--fg"), edge: css("--faint") };
     let hover: string | null = null;
     const fg = new ForceGraph<N, L>(el)
       .width(el.clientWidth)
@@ -108,7 +111,7 @@ export function GraphView({ center, onOpen, onTag, onError }: Props) {
       fg._destructor();
       el.innerHTML = "";
     };
-  }, [data, center, onOpen, onTag]);
+  }, [data, center, theme, onOpen, onTag]);
 
   const count = data ? `${data.nodes.length} węzłów, ${data.links.length} krawędzi` : "";
 
@@ -145,9 +148,30 @@ export function GraphView({ center, onOpen, onTag, onError }: Props) {
         <span className="muted">{count}</span>
       </div>
       {data && data.nodes.length === 0 ? (
-        <div className="empty muted pad graph-empty">
-          Graf jest pusty: żadna Notatka nie ma jeszcze Linków ani Tagów. Wpisz w Notatce <code>[[</code>, aby wstawić Link,
-          albo <code>#tag</code>, aby dodać Tag.
+        <div className="empty graph-empty">
+          <div className="empty-icon">
+            <GraphIcon size={26} />
+          </div>
+          {local && center ? (
+            <>
+              <h2>Ta Notatka nie ma jeszcze połączeń</h2>
+              <div>
+                Wpisz w niej <code>[[</code>, aby wstawić Link, albo <code>#tag</code>, aby dodać Tag. Możesz też poprosić
+                Claude o Propozycje powiązań.
+              </div>
+              <div className="actions" style={{ justifyContent: "center" }}>
+                <button onClick={() => setLocal(false)}>Pokaż cały Skarbiec</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2>Graf jest pusty</h2>
+              <div>
+                Żadna Notatka nie ma jeszcze Linków ani Tagów. Wpisz w Notatce <code>[[</code>, aby wstawić Link, albo{" "}
+                <code>#tag</code>, aby dodać Tag.
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="graph-canvas" ref={host} />
