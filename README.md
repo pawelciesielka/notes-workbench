@@ -6,6 +6,9 @@ Słownik pojęć: [CONTEXT.md](CONTEXT.md). Decyzje architektoniczne: [docs/adr]
 Etap 1: Import z AMNO i przeglądarka Skarbca.
 Etap 2: edycja Notatek (Ctrl+E, autozapis), Linki `[[…]]` z podpowiadaniem, Backlinki, Tagi (`#tag` w treści
 albo `tags:` we frontmatterze), Graf wiedzy (cały Skarbiec albo wokół Notatki), nowa Notatka, Kosz z przywracaniem.
+Etap 3: wyszukiwanie (Ctrl+Shift+F) po słowach (SQLite FTS5) i po znaczeniu (lokalny model multilingual-e5-small,
+pobierany raz do `%LOCALAPPDATA%\eu.ciesielka.notesworkbench\modele`; wektory w `…\wektory`, poza Skarbcem),
+„Podobne treścią” pod Notatką.
 
 ## Wymagania
 
@@ -53,4 +56,6 @@ Wynik trafia do `.notes-workbench/import/raport.json` i `raport.md` w Skarbcu (w
 - `src-tauri/src/`: komendy aplikacji i protokół `vault://` (obrazy, PDF ze Skarbca)
   - `vault.rs`: drzewo, odczyt i zapis Notatek, Kosz
   - `index.rs`: indeks Linków, Backlinków i Tagów w pamięci (pomija kod i HTML), Graf wiedzy
+  - `search.rs`: wyszukiwanie pełnotekstowe (FTS5 w pamięci, synchronizacja po dacie modyfikacji)
+  - `semantic.rs`: wektory fragmentów Notatek, wyszukiwanie po znaczeniu, Notatki podobne
 - `src/`: UI (React): drzewo, widok i edytor Notatki (CodeMirror), Tagi, Graf wiedzy (force-graph), Raport, kreator Importu
