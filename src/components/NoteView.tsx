@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentProps, type CSSProperties } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -18,6 +18,7 @@ import {
   type Summary,
 } from "../lib/api";
 import { Editor } from "./Editor";
+import { useNoteScale } from "../lib/zoom";
 import { CheckIcon, LinkIcon, LockIcon, PencilIcon, SparkIcon, TrashIcon, UnlockIcon, XIcon } from "./Icons";
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|bmp|webp|svg|ico)$/i;
@@ -44,6 +45,9 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
   const [save, setSave] = useState<SaveState>("saved");
   const [title, setTitle] = useState("");
   const [pdf, setPdf] = useState<string | null>(null);
+  // Ctrl + rolka nad treścią: wielkość czcionki widoku i edytora (Ctrl+0 przywraca 100%).
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [scale, scaleFlash, setScale] = useNoteScale(contentRef);
   const inTrash = path.startsWith(TRASH);
 
   // Stan do zapisu poza cyklem renderowania (debounce, zamknięcie Notatki).
@@ -308,8 +312,13 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
   const saveLabel = { saved: "Zapisano", dirty: "Zmiany…", saving: "Zapisywanie…", error: "Błąd zapisu" }[save];
 
   return (
-    <div className={`note-wrap${pdf ? " with-pdf" : ""}`}>
-      <div className={`note${edit ? " editing" : ""}`}>
+    <div className={`note-wrap${pdf ? " with-pdf" : ""}`} style={{ "--note-scale": scale } as CSSProperties}>
+      {scaleFlash && (
+        <button className="scale-badge" onClick={() => setScale(1)} title="Przywróć 100% (Ctrl+0)">
+          {Math.round(scale * 100)}%
+        </button>
+      )}
+      <div className={`note${edit ? " editing" : ""}`} ref={contentRef}>
         <div className="note-head">
           <div className="crumbs">
             {inTrash && <span className="tag-name">Kosz ·&nbsp;</span>}

@@ -122,6 +122,7 @@ export const api = {
   tree: (trash: boolean) => invoke<TreeNode[]>("vault_tree", { trash }),
   readNote: (path: string) => invoke<NoteData>("read_note", { path }),
   readReport: () => invoke<Report | null>("read_report"),
+  revealVault: () => invoke<void>("reveal_vault"),
   openVaultFile: (path: string) => invoke<void>("open_vault_file", { path }),
   openLink: (url: string) => invoke<void>("open_link", { url }),
 };

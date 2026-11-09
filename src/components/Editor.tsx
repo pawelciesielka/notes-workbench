@@ -57,7 +57,7 @@ function completions(getSummary: () => Summary | null) {
 }
 
 const theme = EditorView.theme({
-  "&": { height: "100%", fontSize: "14px", backgroundColor: "var(--surface)", color: "var(--fg)" },
+  "&": { height: "100%", fontSize: "calc(14px * var(--note-scale, 1))", backgroundColor: "var(--surface)", color: "var(--fg)" },
   ".cm-scroller": { fontFamily: "var(--mono)", lineHeight: "1.6" },
   ".cm-content": { caretColor: "var(--fg)", padding: "12px 0" },
   ".cm-gutters": { backgroundColor: "var(--bg-side)", color: "var(--muted)", border: "none" },

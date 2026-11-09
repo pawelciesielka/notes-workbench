@@ -382,6 +382,13 @@ fn read_report(state: State<AppState>) -> Result<Option<serde_json::Value>, Stri
     }
 }
 
+/// Otwiera katalog Skarbca w Eksploratorze Windows.
+#[tauri::command]
+fn reveal_vault(app: AppHandle, state: State<AppState>) -> Result<(), String> {
+    let v = state.vault()?;
+    app.opener().open_path(v.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
+}
+
 /// Otwiera plik ze Skarbca (Załącznik) w domyślnym programie Windows.
 #[tauri::command]
 fn open_vault_file(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
@@ -471,6 +478,7 @@ pub fn run() {
             restore_note,
             read_report,
             open_vault_file,
+            reveal_vault,
             open_link
         ])
         .run(tauri::generate_context!())

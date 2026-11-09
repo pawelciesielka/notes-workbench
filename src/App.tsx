@@ -204,11 +204,20 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="side-head">
-          <div className="vault-name" title={vault}>
+          <div className="vault-name">
             <span className="vault-icon">
               <VaultIcon size={15} />
             </span>
-            <span>{vaultName}</span>
+            <div className="vault-text">
+              <span className="vault-title">{vaultName}</span>
+              <button
+                className="vault-path"
+                title={`Skarbiec: ${vault}\nKliknij, aby otworzyć katalog w Eksploratorze`}
+                onClick={() => api.revealVault().catch((e) => setError(String(e)))}
+              >
+                <bdi dir="ltr">{vault}</bdi>
+              </button>
+            </div>
           </div>
           <div className="side-actions">
             <button
