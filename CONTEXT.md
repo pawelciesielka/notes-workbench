@@ -64,6 +64,10 @@ _Unikaj_: relacja, link AI, sugestia
 Znalezione przez AI, jeszcze nie zaakceptowane połączenie dwóch Notatek z krótkim uzasadnieniem; po akceptacji staje się Powiązaniem, a odrzucona nie wraca.
 _Unikaj_: rekomendacja, podpowiedź
 
+**Notatka podobna**:
+Notatka o zbliżonej treści według lokalnego modelu, pokazywana przy Notatce; nie jest ani Linkiem, ani Powiązaniem i nie trafia do Grafu wiedzy.
+_Unikaj_: powiązana, rekomendowana
+
 **Graf wiedzy**:
 Sieć, w której węzłami są Notatki i Tagi, a krawędziami Linki, Powiązania i przypisania Tagów; krawędzie nie mają typu.
 _Unikaj_: mapa myśli, sieć notatek

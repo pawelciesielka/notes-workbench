@@ -7,6 +7,7 @@ import { ReportView } from "./components/ReportView";
 import { ImportWizard } from "./components/ImportWizard";
 import { TagsPanel } from "./components/TagsPanel";
 import { GraphView } from "./components/GraphView";
+import { SearchPanel } from "./components/SearchPanel";
 
 type Main =
   | { kind: "note"; path: string; edit?: boolean }
@@ -15,7 +16,7 @@ type Main =
   | { kind: "import" }
   | { kind: "empty" };
 
-type Side = "notes" | "tags" | "trash";
+type Side = "notes" | "search" | "tags" | "trash";
 
 function countNotes(nodes: TreeNode[]): number {
   return nodes.reduce((n, x) => n + (x.kind === "note" ? 1 : 0) + (x.folder_note ? 1 : 0) + countNotes(x.children), 0);
@@ -70,6 +71,20 @@ export default function App() {
   }, [vault, loadVault]);
 
   const onError = useCallback((m: string) => setError(m), []);
+
+  // Ctrl+Shift+F: przejście do wyszukiwania z kursorem w polu.
+  const [searchFocus, setSearchFocus] = useState(0);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setSide("search");
+        setSearchFocus((n) => n + 1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const openNote = useCallback((path: string, edit?: boolean) => {
     if (!path) return setMain({ kind: "empty" });
@@ -176,6 +191,9 @@ export default function App() {
           <button className={`tab${side === "notes" ? " on" : ""}`} onClick={() => setSide("notes")}>
             Notatki
           </button>
+          <button className={`tab${side === "search" ? " on" : ""}`} onClick={() => setSide("search")}>
+            Szukaj
+          </button>
           <button className={`tab${side === "tags" ? " on" : ""}`} onClick={() => setSide("tags")}>
             Tagi ({summary?.tags.length ?? 0})
           </button>
@@ -183,7 +201,11 @@ export default function App() {
             Kosz ({countNotes(trashTree)})
           </button>
         </div>
-        {side === "tags" ? (
+        {/* Panel wyszukiwania zostaje w drzewie DOM, żeby po przełączeniu zakładek nie gubić wyników. */}
+        <div className="tree" style={{ display: side === "search" ? undefined : "none" }}>
+          <SearchPanel activeNote={selected} focusKey={searchFocus} onOpen={openNote} onError={onError} />
+        </div>
+        {side === "search" ? null : side === "tags" ? (
           <div className="tree">
             <TagsPanel summary={summary} selected={tag} activeNote={selected} onSelect={setTag} onOpen={openNote} />
           </div>

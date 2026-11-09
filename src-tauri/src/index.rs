@@ -269,7 +269,13 @@ fn parse_note(path: String, raw: &str) -> NoteInfo {
     NoteInfo { path, stem, title, tags, links }
 }
 
-fn collect(vault: &Path, dir: &Path, out: &mut Vec<String>) {
+/// Tagi Notatki (z frontmattera i treści).
+pub fn note_tags(path: &str, raw: &str) -> Vec<String> {
+    parse_note(path.to_string(), raw).tags
+}
+
+/// Ścieżki wszystkich Notatek poza Koszem i katalogami ukrytymi.
+pub fn collect(vault: &Path, dir: &Path, out: &mut Vec<String>) {
     let Ok(rd) = fs::read_dir(dir) else { return };
     for e in rd.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
@@ -375,6 +381,10 @@ impl Index {
             .collect();
         v.sort_by_key(|n| n.title.to_lowercase());
         v
+    }
+
+    pub fn title(&self, path: &str) -> Option<String> {
+        self.notes.get(path).map(|n| n.title.clone())
     }
 
     fn note_ref(&self, path: &str) -> Option<NoteRef> {

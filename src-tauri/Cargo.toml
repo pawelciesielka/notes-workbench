@@ -21,4 +21,6 @@ serde_json = "1"
 urlencoding = "2"
 pulldown-cmark = { version = "0.13", default-features = false }
 regex = "1"
+rusqlite = { version = "0.41", features = ["bundled"] }
+fastembed = { version = "7.7", default-features = false, features = ["onnx", "ort-download-binaries-rustls-tls", "hf-hub-rustls-tls"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

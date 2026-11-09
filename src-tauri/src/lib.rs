@@ -1,10 +1,15 @@
 mod index;
+mod search;
+mod semantic;
 mod vault;
 
 use index::Index;
+use search::Search;
+use semantic::Semantic;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
@@ -12,15 +17,95 @@ use tauri_plugin_opener::OpenerExt;
 #[derive(Default, Serialize, Deserialize, Clone)]
 struct Settings {
     vault: Option<String>,
+    /// Użytkownik włączył wyszukiwanie semantyczne (i zgodził się na pobranie modelu).
+    #[serde(default)]
+    semantic: bool,
 }
 
 #[derive(Default)]
 struct AppState {
     settings: Mutex<Settings>,
     index: Mutex<Option<Index>>,
+    search: Mutex<Option<Search>>,
+    semantic: Semantic,
+    sem_running: AtomicBool,
+    sem_again: AtomicBool,
+}
+
+/// Uruchamia w tle liczenie wektorów (jeśli włączone); gdy już trwa, zleca ponowny przebieg po nim.
+fn start_semantic(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    if !state.settings.lock().unwrap().semantic {
+        return;
+    }
+    if state.sem_running.swap(true, Ordering::SeqCst) {
+        state.sem_again.store(true, Ordering::SeqCst);
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let state = app.state::<AppState>();
+        let Ok(data_dir) = app.path().app_local_data_dir() else {
+            state.sem_running.store(false, Ordering::SeqCst);
+            return;
+        };
+        loop {
+            state.sem_again.store(false, Ordering::SeqCst);
+            state.semantic.status.lock().unwrap().running = true;
+            state.semantic.status.lock().unwrap().error = None;
+            let result = match state.vault() {
+                Ok(v) => state.semantic.run(&data_dir, &v, &|s| {
+                    let _ = app.emit("semantic-status", s);
+                }),
+                Err(e) => Err(e),
+            };
+            {
+                let mut s = state.semantic.status.lock().unwrap();
+                s.running = false;
+                s.phase = String::new();
+                s.error = result.err();
+            }
+            let _ = app.emit("semantic-status", state.semantic.status());
+            if !state.sem_again.load(Ordering::SeqCst) {
+                break;
+            }
+        }
+        state.sem_running.store(false, Ordering::SeqCst);
+    });
 }
 
 impl AppState {
+    fn with_search<T>(&self, f: impl FnOnce(&mut Search, &PathBuf) -> T) -> Result<T, String> {
+        let vault = self.vault()?;
+        let mut g = self.search.lock().unwrap();
+        let s = g.get_or_insert_with(|| {
+            let mut s = Search::new();
+            s.sync(&vault);
+            s
+        });
+        Ok(f(s, &vault))
+    }
+
+    /// Po zmianie plików: `removed` zniknęła ze swojego miejsca, `updated` ma nową treść.
+    fn changed(&self, removed: Option<&str>, updated: Option<&str>) -> Result<(), String> {
+        self.with_index(|idx, v| {
+            if let Some(r) = removed {
+                idx.remove(r);
+            }
+            if let Some(u) = updated {
+                idx.update(v, u);
+            }
+        })?;
+        self.with_search(|s, v| {
+            if let Some(r) = removed {
+                s.remove(r);
+            }
+            if let Some(u) = updated {
+                s.update(v, u);
+            }
+        })
+    }
+
     /// Działa na indeksie Grafu wiedzy, budując go przy pierwszym użyciu.
     fn with_index<T>(&self, f: impl FnOnce(&mut Index, &PathBuf) -> T) -> Result<T, String> {
         let vault = self.vault()?;
@@ -69,6 +154,8 @@ fn set_vault(app: AppHandle, state: State<AppState>, path: String) -> Result<(),
         s.clone()
     };
     *state.index.lock().unwrap() = None;
+    *state.search.lock().unwrap() = None;
+    state.semantic.reset_store();
     save_settings(&app, &s)
 }
 
@@ -114,13 +201,94 @@ fn read_note(state: State<AppState>, path: String) -> Result<vault::NoteData, St
 
 /// Buduje indeks od nowa (np. po powrocie do okna, gdy pliki mogły zmienić się z zewnątrz).
 #[tauri::command]
-async fn vault_index(state: State<'_, AppState>, rebuild: bool) -> Result<index::Summary, String> {
+async fn vault_index(app: AppHandle, state: State<'_, AppState>, rebuild: bool) -> Result<index::Summary, String> {
     if rebuild {
         let vault = state.vault()?;
         let idx = tauri::async_runtime::spawn_blocking(move || Index::build(&vault)).await.map_err(|e| e.to_string())?;
         *state.index.lock().unwrap() = Some(idx);
+        state.with_search(|s, v| s.sync(v))?;
     }
+    // Wektory dogonią zmiany w tle (liczy tylko zmienione Notatki).
+    start_semantic(&app);
     state.with_index(|idx, _| idx.summary())
+}
+
+#[tauri::command]
+fn search_notes(state: State<AppState>, query: String, limit: Option<usize>) -> Result<search::Results, String> {
+    state.with_search(|s, _| s.search(&query, limit.unwrap_or(100)))?
+}
+
+#[derive(Serialize)]
+struct SemanticInfo {
+    #[serde(flatten)]
+    status: semantic::Status,
+    model: &'static str,
+    model_mb: u32,
+}
+
+#[tauri::command]
+fn semantic_status(state: State<AppState>) -> SemanticInfo {
+    let mut status = state.semantic.status();
+    status.enabled = state.settings.lock().unwrap().semantic;
+    SemanticInfo { status, model: semantic::MODEL_NAME, model_mb: semantic::MODEL_MB }
+}
+
+/// Włącza wyszukiwanie semantyczne: przy pierwszym razie pobiera model.
+#[tauri::command]
+fn semantic_enable(app: AppHandle, state: State<AppState>) -> Result<(), String> {
+    let s = {
+        let mut s = state.settings.lock().unwrap();
+        s.semantic = true;
+        s.clone()
+    };
+    save_settings(&app, &s)?;
+    start_semantic(&app);
+    Ok(())
+}
+
+#[tauri::command]
+async fn semantic_search(state: State<'_, AppState>, query: String) -> Result<Vec<semantic::SemHit>, String> {
+    let titles = |p: &str| state.with_index(|idx, _| idx.title(p)).ok().flatten();
+    let sem = state.semantic.search(&query, 60, &titles)?;
+    // Wyszukiwanie hybrydowe: łączymy miejsca w rankingu po znaczeniu i po słowach (Reciprocal Rank Fusion),
+    // bo sam model myli się przy nazwach własnych i skrótach, a same słowa nie łapią synonimów.
+    let words = state.with_search(|s, _| s.search(&query, 60))??;
+    let mut fused: std::collections::HashMap<String, (f32, semantic::SemHit)> = std::collections::HashMap::new();
+    for (rank, h) in sem.into_iter().enumerate() {
+        fused.insert(h.path.clone(), (1.0 / (60.0 + rank as f32), h));
+    }
+    for (rank, h) in words.hits.into_iter().enumerate() {
+        let w = 1.0 / (60.0 + rank as f32);
+        match fused.get_mut(&h.path) {
+            Some((score, hit)) => {
+                *score += w;
+                hit.snippet = h.snippet;
+            }
+            None => {
+                let hit = semantic::SemHit { path: h.path.clone(), title: h.title, folder: h.folder, snippet: h.snippet, score: 0.0 };
+                fused.insert(h.path, (w, hit));
+            }
+        }
+    }
+    let mut v: Vec<_> = fused.into_values().collect();
+    v.sort_by(|a, b| b.0.total_cmp(&a.0));
+    Ok(v.into_iter().take(50).map(|(s, mut h)| {
+        h.score = s;
+        h
+    }).collect())
+}
+
+#[tauri::command]
+fn similar_notes(state: State<AppState>, path: String) -> Result<Vec<index::NoteRef>, String> {
+    // Próg dobrany na Skarbcu z AMNO: od ~0,92 wyniki są wyraźnie tematyczne, poniżej 0,90 to przypadek
+    // (mediana podobieństwa najbliższej Notatki to 0,91).
+    let sims = state.semantic.similar(&path, 6);
+    state.with_index(|idx, _| {
+        sims.into_iter()
+            .filter(|(_, s)| *s > 0.915)
+            .filter_map(|(p, _)| idx.title(&p).map(|title| index::NoteRef { stem: String::new(), path: p, title }))
+            .collect()
+    })
 }
 
 #[tauri::command]
@@ -147,35 +315,35 @@ fn graph(state: State<AppState>) -> Result<index::Graph, String> {
 #[tauri::command]
 fn save_note(state: State<AppState>, path: String, body: String, expected: String) -> Result<vault::NoteData, String> {
     let n = vault::save_body(&state.vault()?, &path, &body, &expected)?;
-    state.with_index(|idx, v| idx.update(v, &path))?;
+    state.changed(None, Some(&path))?;
     Ok(n)
 }
 
 #[tauri::command]
 fn set_note_title(state: State<AppState>, path: String, title: String) -> Result<vault::NoteData, String> {
     let n = vault::set_title(&state.vault()?, &path, &title)?;
-    state.with_index(|idx, v| idx.update(v, &path))?;
+    state.changed(None, Some(&path))?;
     Ok(n)
 }
 
 #[tauri::command]
 fn create_note(state: State<AppState>, folder: String, title: String) -> Result<String, String> {
     let p = vault::create_note(&state.vault()?, &folder, &title)?;
-    state.with_index(|idx, v| idx.update(v, &p))?;
+    state.changed(None, Some(&p))?;
     Ok(p)
 }
 
 #[tauri::command]
 fn trash_note(state: State<AppState>, path: String) -> Result<String, String> {
     let p = vault::trash_note(&state.vault()?, &path)?;
-    state.with_index(|idx, _| idx.remove(&path))?;
+    state.changed(Some(&path), None)?;
     Ok(p)
 }
 
 #[tauri::command]
 fn restore_note(state: State<AppState>, path: String) -> Result<String, String> {
     let p = vault::restore_note(&state.vault()?, &path)?;
-    state.with_index(|idx, v| idx.update(v, &p))?;
+    state.changed(None, Some(&p))?;
     Ok(p)
 }
 
@@ -257,6 +425,11 @@ pub fn run() {
             vault_tree,
             read_note,
             vault_index,
+            search_notes,
+            semantic_status,
+            semantic_enable,
+            semantic_search,
+            similar_notes,
             note_links,
             resolve_link,
             tag_notes,

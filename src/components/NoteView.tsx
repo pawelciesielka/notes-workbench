@@ -14,6 +14,7 @@ import {
   vaultUrl,
   type NoteData,
   type NoteLinks,
+  type NoteRef,
   type Summary,
 } from "../lib/api";
 import { Editor } from "./Editor";
@@ -47,11 +48,17 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
   // Stan do zapisu poza cyklem renderowania (debounce, zamknięcie Notatki).
   const ref = useRef({ raw: "", draft: "", dirty: false, timer: 0 as number | undefined });
 
+  const [similar, setSimilar] = useState<NoteRef[]>([]);
+
   const loadLinks = useCallback(() => {
     api
       .noteLinks(path)
       .then(setLinks)
       .catch(() => setLinks(null));
+    api
+      .similarNotes(path)
+      .then(setSimilar)
+      .catch(() => setSimilar([]));
   }, [path]);
 
   useEffect(() => {
@@ -336,7 +343,7 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
                 </Markdown>
               </div>
             )}
-            {links && (links.backlinks.length > 0 || links.related.length > 0) && (
+            {links && (links.backlinks.length > 0 || links.related.length > 0 || similar.length > 0) && (
               <section className="backlinks">
                 {links.related.length > 0 && (
                   <>
@@ -367,6 +374,23 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
                               {l}
                             </div>
                           ))}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {similar.length > 0 && (
+                  <>
+                    <h2 title="Notatki o podobnej treści według lokalnego modelu; to nie są Linki.">
+                      Podobne treścią ({similar.length})
+                    </h2>
+                    <ul>
+                      {similar.map((r) => (
+                        <li key={r.path}>
+                          <a href="#" className="wikilink" onClick={(e) => (e.preventDefault(), onOpen(r.path))}>
+                            {r.title}
+                          </a>
+                          <span className="muted small"> {folderOf(r.path).replace(/\//g, " / ")}</span>
                         </li>
                       ))}
                     </ul>

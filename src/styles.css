@@ -619,6 +619,63 @@ input {
   min-height: 0;
   overflow: hidden;
 }
+.search-hit {
+  padding: 6px 10px;
+  margin: 0 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.search-hit:hover {
+  background: var(--bg-hover);
+}
+.search-hit.active {
+  background: var(--bg-active);
+}
+.search-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-folder {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-snippet {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.search-snippet mark {
+  background: color-mix(in srgb, var(--tag) 30%, transparent);
+  color: var(--fg);
+  border-radius: 2px;
+}
+.search-modes {
+  padding: 0 10px 6px;
+  align-items: center;
+}
+.small {
+  font-size: 12px;
+}
+.semantic-box p {
+  margin: 0 0 8px;
+  line-height: 1.45;
+}
+.search-help {
+  line-height: 1.5;
+}
+.side-tabs .tab {
+  padding: 4px 7px;
+}
 .graph-empty {
   max-width: 480px;
   text-align: center;

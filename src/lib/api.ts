@@ -57,8 +57,30 @@ export type NoteLinks = { spans: Span[]; tags: string[]; related: NoteRef[]; bac
 export type GraphNode = { id: string; label: string; kind: "note" | "tag" };
 export type Graph = { nodes: GraphNode[]; edges: [string, string][] };
 
+export type SearchHit = { path: string; title: string; folder: string; snippet: string };
+export type SearchResults = { hits: SearchHit[]; partial: boolean };
+
+export type SemanticInfo = {
+  enabled: boolean;
+  model_ready: boolean;
+  running: boolean;
+  phase: string;
+  done: number;
+  total: number;
+  notes: number;
+  error: string | null;
+  model: string;
+  model_mb: number;
+};
+export type SemHit = SearchHit & { score: number };
+
 export const api = {
-  index: (rebuild: boolean) => invoke<Summary>("vault_index", { rebuild }),
+  semanticStatus: () => invoke<SemanticInfo>("semantic_status"),
+  semanticEnable: () => invoke<void>("semantic_enable"),
+  semanticSearch: (query: string) => invoke<SemHit[]>("semantic_search", { query }),
+  similarNotes: (path: string) => invoke<NoteRef[]>("similar_notes", { path }),
+  search:(query: string) => invoke<SearchResults>("search_notes", { query }),
+  index:(rebuild: boolean) => invoke<Summary>("vault_index", { rebuild }),
   noteLinks: (path: string) => invoke<NoteLinks>("note_links", { path }),
   resolveLink: (from: string, target: string) => invoke<string | null>("resolve_link", { from, target }),
   tagNotes: (tag: string) => invoke<NoteRef[]>("tag_notes", { tag }),
