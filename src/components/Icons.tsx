@@ -159,3 +159,20 @@ export const LinkIcon = (p: P) => (
     <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
   </Svg>
 );
+export const TypeIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M5 7V5h14v2M12 5v14M9 19h6" />
+  </Svg>
+);
+export const MoveIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" />
+    <path d="M9 13.5h6M12.8 11.2l2.3 2.3-2.3 2.3" />
+  </Svg>
+);
+export const RestoreIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.6" />
+    <path d="M4 4v4.6h4.6" />
+  </Svg>
+);

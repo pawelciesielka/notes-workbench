@@ -82,6 +82,9 @@ export type SemanticInfo = {
 };
 export type SemHit = SearchHit & { score: number };
 
+/** Wynik przeniesienia: nowa ścieżka i liczba Notatek z poprawionymi Linkami. */
+export type OpResult = { path: string; fixed: number };
+
 export type Proposal = {
   id: number;
   kind: "relation" | "tag";
@@ -123,6 +126,13 @@ export const api = {
   readNote: (path: string) => invoke<NoteData>("read_note", { path }),
   readReport: () => invoke<Report | null>("read_report"),
   revealVault: () => invoke<void>("reveal_vault"),
+  revealPath: (path: string) => invoke<void>("reveal_path", { path }),
+  createFolder: (parent: string, name: string) => invoke<string>("create_folder", { parent, name }),
+  renameFolder: (path: string, name: string) => invoke<OpResult>("rename_folder", { path, name }),
+  moveNote: (path: string, folder: string) => invoke<OpResult>("move_note", { path, folder }),
+  trashFolder: (path: string) => invoke<string>("trash_folder", { path }),
+  restoreFolder: (path: string) => invoke<string>("restore_folder", { path }),
+  setFolderNoai: (path: string, on: boolean) => invoke<string>("set_folder_noai", { path, on }),
   openVaultFile: (path: string) => invoke<void>("open_vault_file", { path }),
   openLink: (url: string) => invoke<void>("open_link", { url }),
 };

@@ -426,6 +426,16 @@ impl Index {
         points(a, b) || points(b, a)
     }
 
+    /// Cele Linków Notatki tak, jak są zapisane (z treści i z `powiazane`), bez aliasów i nagłówków.
+    pub fn link_targets(&self, path: &str) -> Vec<String> {
+        self.notes.get(path).map(|n| n.links.iter().map(|l| l.target.clone()).collect()).unwrap_or_default()
+    }
+
+    /// Ścieżki wszystkich Notatek w indeksie.
+    pub fn paths(&self) -> Vec<String> {
+        self.notes.keys().cloned().collect()
+    }
+
     pub fn has_tag(&self, path: &str, tag: &str) -> bool {
         let k = tag_key(tag);
         self.notes.get(path).is_some_and(|n| n.tags.iter().any(|t| tag_key(t) == k))

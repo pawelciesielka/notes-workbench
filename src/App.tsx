@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, folderOf, type Report, type Summary, type TreeNode } from "./lib/api";
 import { Tree } from "./components/Tree";
@@ -10,9 +10,18 @@ import { GraphView } from "./components/GraphView";
 import { SearchPanel } from "./components/SearchPanel";
 import { ProposalsView } from "./components/ProposalsView";
 import { useTheme, type ThemeMode } from "./lib/theme";
+import { ContextMenu, FolderPicker, PromptDialog, type MenuItem } from "./components/Menu";
+import { ask } from "@tauri-apps/plugin-dialog";
 import {
   CheckIcon,
   FileIcon,
+  LinkIcon,
+  LockIcon,
+  MoveIcon,
+  PencilIcon,
+  RestoreIcon,
+  TypeIcon,
+  UnlockIcon,
   FolderIcon,
   FolderOpenAction,
   GraphIcon,
@@ -143,6 +152,288 @@ export default function App() {
     } catch (e) {
       setError(String(e));
     }
+  };
+
+  // ===== Menu kontekstowe drzewa =====
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [dialog, setDialog] = useState<ReactNode>(null);
+  const [info, setInfo] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const closeDialog = () => setDialog(null);
+
+  useEffect(() => {
+    if (!info) return;
+    const t = window.setTimeout(() => setInfo(""), 3500);
+    return () => window.clearTimeout(t);
+  }, [info]);
+
+  const run = async (f: () => Promise<unknown>) => {
+    try {
+      await f();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const openPath = main.kind === "note" ? main.path : null;
+  /** Otwarta Notatka zmieniła ścieżkę (przeniesienie, zmiana nazwy Folderu). */
+  const followMove = (from: string, to: string, isFolder: boolean) => {
+    if (!openPath) return;
+    if (!isFolder && openPath === from) openNote(to);
+    else if (isFolder && openPath.startsWith(from + "/")) openNote(to + openPath.slice(from.length));
+  };
+  const fixedMsg = (n: number) => (n > 0 ? ` Poprawiono Linki w ${n} Notatkach.` : "");
+
+  const noteMenu = (n: TreeNode): MenuItem[] => {
+    const locked = summary?.noai.includes(n.path) ?? false;
+    const stem = n.path.split("/").pop()!.replace(/\.md$/, "");
+    const link = stem === n.title ? `[[${stem}]]` : `[[${stem}|${n.title}]]`;
+    return [
+      { label: "Otwórz", icon: <FileIcon size={15} />, onClick: () => openNote(n.path) },
+      { label: "Edytuj", icon: <PencilIcon size={15} />, hint: "Ctrl+E", onClick: () => openNote(n.path, true) },
+      {
+        label: "Zmień tytuł…",
+        icon: <TypeIcon size={15} />,
+        onClick: () =>
+          setDialog(
+            <PromptDialog
+              title="Zmień tytuł Notatki"
+              label="Tytuł"
+              initial={n.title}
+              okLabel="Zmień"
+              hint="Nazwa pliku zostaje ta sama, więc Linki do Notatki działają dalej."
+              onClose={closeDialog}
+              onOk={(t) =>
+                run(async () => {
+                  await api.setTitle(n.path, t);
+                  onChanged(true);
+                  setReloadKey((k) => k + 1);
+                })
+              }
+            />,
+          ),
+      },
+      { separator: true },
+      {
+        label: "Nowa Notatka obok",
+        icon: <PlusIcon size={15} />,
+        onClick: () =>
+          run(async () => {
+            const p = await api.createNote(folderOf(n.path), "");
+            onChanged(true);
+            openNote(p, true);
+          }),
+      },
+      {
+        label: "Przenieś do Folderu…",
+        icon: <MoveIcon size={15} />,
+        onClick: () =>
+          setDialog(
+            <FolderPicker
+              title={`Przenieś „${n.title}”`}
+              tree={tree}
+              current={folderOf(n.path)}
+              onClose={closeDialog}
+              onPick={(f) =>
+                run(async () => {
+                  const r = await api.moveNote(n.path, f);
+                  onChanged(true);
+                  followMove(n.path, r.path, false);
+                  setInfo(`Przeniesiono do ${f || "głównego katalogu"}.${fixedMsg(r.fixed)}`);
+                })
+              }
+            />,
+          ),
+      },
+      {
+        label: "Kopiuj Link",
+        icon: <LinkIcon size={15} />,
+        hint: link.length > 22 ? undefined : link,
+        title: link,
+        onClick: () =>
+          run(async () => {
+            await navigator.clipboard.writeText(link);
+            setInfo(`Skopiowano ${link}`);
+          }),
+      },
+      {
+        label: locked ? "Udostępnij AI" : "Ukryj przed AI",
+        icon: locked ? <UnlockIcon size={15} /> : <LockIcon size={15} />,
+        onClick: () =>
+          run(async () => {
+            await api.setNoai(n.path, !locked);
+            const s = await api.index(false);
+            setSummary(s);
+            setReloadKey((k) => k + 1);
+            if (locked && s.noai.includes(n.path))
+              setError("Notatka nadal jest ukryta: Tag #noai ma w treści albo ma go Notatka folderu nad nią.");
+          }),
+      },
+      { label: "Pokaż w Eksploratorze", icon: <FolderOpenAction size={15} />, onClick: () => run(() => api.revealPath(n.path)) },
+      { separator: true },
+      {
+        label: "Przenieś do Kosza",
+        icon: <TrashIcon size={15} />,
+        danger: true,
+        onClick: () =>
+          run(async () => {
+            if (!(await ask(`Przenieść Notatkę „${n.title}” do Kosza? Można ją potem przywrócić.`, { title: "Do Kosza", kind: "warning" })))
+              return;
+            await api.trashNote(n.path);
+            onChanged(true);
+            if (openPath === n.path) setMain({ kind: "empty" });
+          }),
+      },
+    ];
+  };
+
+  const folderMenu = (n: TreeNode): MenuItem[] => {
+    const locked = !!n.folder_note && (summary?.noai.includes(n.folder_note) ?? false);
+    const count = (function c(x: TreeNode): number {
+      return x.children.reduce((s, k) => s + (k.kind === "note" ? 1 : 0) + (k.folder_note ? 1 : 0) + c(k), 0);
+    })(n) + (n.folder_note ? 1 : 0);
+    return [
+      ...(n.folder_note
+        ? [{ label: "Otwórz Notatkę folderu", icon: <FileIcon size={15} />, onClick: () => openNote(n.folder_note!) }, { separator: true } as MenuItem]
+        : []),
+      {
+        label: "Nowa Notatka w tym Folderze",
+        icon: <PlusIcon size={15} />,
+        onClick: () =>
+          run(async () => {
+            const p = await api.createNote(n.path, "");
+            onChanged(true);
+            openNote(p, true);
+          }),
+      },
+      {
+        label: "Nowy Folder…",
+        icon: <FolderIcon size={15} />,
+        onClick: () =>
+          setDialog(
+            <PromptDialog
+              title={`Nowy Folder w „${n.title}”`}
+              label="Nazwa"
+              initial="Nowy Folder"
+              okLabel="Utwórz"
+              onClose={closeDialog}
+              onOk={(name) =>
+                run(async () => {
+                  await api.createFolder(n.path, name);
+                  onChanged(true);
+                })
+              }
+            />,
+          ),
+      },
+      {
+        label: "Zmień nazwę…",
+        icon: <TypeIcon size={15} />,
+        onClick: () =>
+          setDialog(
+            <PromptDialog
+              title="Zmień nazwę Folderu"
+              label="Nazwa"
+              initial={n.name}
+              okLabel="Zmień"
+              hint="Notatka folderu zmieni nazwę razem z nim, a Linki zapisane ze ścieżką zostaną poprawione."
+              onClose={closeDialog}
+              onOk={(name) =>
+                run(async () => {
+                  const r = await api.renameFolder(n.path, name);
+                  onChanged(true);
+                  followMove(n.path, r.path, true);
+                  if (r.path !== n.path) setInfo(`Zmieniono nazwę Folderu.${fixedMsg(r.fixed)}`);
+                })
+              }
+            />,
+          ),
+      },
+      { separator: true },
+      {
+        label: locked ? "Udostępnij Folder AI" : "Ukryj Folder przed AI",
+        icon: locked ? <UnlockIcon size={15} /> : <LockIcon size={15} />,
+        title: locked ? undefined : "Dodaje Tag noai do Notatki folderu (tworzy ją, jeśli jej nie ma).",
+        onClick: () =>
+          run(async () => {
+            await api.setFolderNoai(n.path, !locked);
+            onChanged(true);
+            setReloadKey((k) => k + 1);
+          }),
+      },
+      { label: "Pokaż w Eksploratorze", icon: <FolderOpenAction size={15} />, onClick: () => run(() => api.revealPath(n.path)) },
+      { separator: true },
+      {
+        label: "Przenieś Folder do Kosza",
+        icon: <TrashIcon size={15} />,
+        danger: true,
+        onClick: () =>
+          run(async () => {
+            const msg = `Przenieść Folder „${n.title}”${count ? ` razem z ${count} Notatkami` : ""} do Kosza? Można go potem przywrócić.`;
+            if (!(await ask(msg, { title: "Do Kosza", kind: "warning" }))) return;
+            await api.trashFolder(n.path);
+            onChanged(true);
+            if (openPath && (openPath.startsWith(n.path + "/") || openPath === n.folder_note)) setMain({ kind: "empty" });
+          }),
+      },
+    ];
+  };
+
+  const trashMenu = (n: TreeNode): MenuItem[] => [
+    ...(n.kind === "note" ? [{ label: "Otwórz", icon: <FileIcon size={15} />, onClick: () => openNote(n.path) }] : []),
+    {
+      label: n.kind === "folder" ? "Przywróć Folder" : "Przywróć",
+      icon: <RestoreIcon size={15} />,
+      onClick: () =>
+        run(async () => {
+          const p = n.kind === "folder" ? await api.restoreFolder(n.path) : await api.restoreNote(n.path);
+          onChanged(true);
+          setInfo(`Przywrócono: ${p}`);
+          if (openPath === n.path) openNote(p);
+        }),
+    },
+    { label: "Pokaż w Eksploratorze", icon: <FolderOpenAction size={15} />, onClick: () => run(() => api.revealPath(n.path)) },
+  ];
+
+  const rootMenu = (): MenuItem[] => [
+    {
+      label: "Nowa Notatka",
+      icon: <PlusIcon size={15} />,
+      onClick: () =>
+        run(async () => {
+          const p = await api.createNote("", "");
+          onChanged(true);
+          openNote(p, true);
+        }),
+    },
+    {
+      label: "Nowy Folder…",
+      icon: <FolderIcon size={15} />,
+      onClick: () =>
+        setDialog(
+          <PromptDialog
+            title="Nowy Folder"
+            label="Nazwa"
+            initial="Nowy Folder"
+            okLabel="Utwórz"
+            onClose={closeDialog}
+            onOk={(name) =>
+              run(async () => {
+                await api.createFolder("", name);
+                onChanged(true);
+              })
+            }
+          />,
+        ),
+    },
+    { label: "Pokaż Skarbiec w Eksploratorze", icon: <FolderOpenAction size={15} />, onClick: () => run(() => api.revealVault()) },
+  ];
+
+  const onTreeMenu = (n: TreeNode | null, x: number, y: number) => {
+    const items =
+      side === "trash" ? (n ? trashMenu(n) : []) : !n ? rootMenu() : n.kind === "folder" ? folderMenu(n) : noteMenu(n);
+    if (items.length) setMenu({ x, y, items });
   };
 
   const openVault = async () => {
@@ -293,6 +584,7 @@ export default function App() {
             selected={selected}
             noai={noaiSet}
             onOpen={openNote}
+            onMenu={onTreeMenu}
           />
         )}
         {report && (
@@ -307,6 +599,14 @@ export default function App() {
         )}
       </aside>
       <main className="main">
+        {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
+        {dialog}
+        {info && !error && (
+          <div className="banner ok toast" onClick={() => setInfo("")} role="status">
+            <CheckIcon size={15} />
+            <span>{info}</span>
+          </div>
+        )}
         {error && (
           <div className="banner bad toast" onClick={() => setError("")} title="Kliknij, aby zamknąć" role="alert">
             <span>{error}</span>
@@ -315,7 +615,7 @@ export default function App() {
         )}
         {main.kind === "note" && (
           <NoteView
-            key={main.path}
+            key={`${main.path}#${reloadKey}`}
             path={main.path}
             startEditing={main.edit}
             summary={summary}

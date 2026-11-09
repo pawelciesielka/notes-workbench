@@ -36,9 +36,11 @@ type Props = {
   /** Notatki ukryte przed AI (oznaczane kłódką). */
   noai?: Set<string>;
   onOpen: (notePath: string) => void;
+  /** Prawy przycisk (albo klawisz Menu) na węźle; `null` to puste miejsce drzewa. */
+  onMenu?: (node: TreeNode | null, x: number, y: number) => void;
 };
 
-export function Tree({ nodes, selected, noai, onOpen }: Props) {
+export function Tree({ nodes, selected, noai, onOpen, onMenu }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<string | null>(null);
@@ -143,6 +145,14 @@ export function Tree({ nodes, selected, noai, onOpen }: Props) {
       case "Home":
         go(0);
         break;
+      case "ContextMenu":
+      case "F10": {
+        if (e.key === "F10" && !e.shiftKey) return;
+        const el = r && listRef.current?.querySelector(`[data-path="${CSS.escape(r.node.path)}"]`);
+        const b = el?.getBoundingClientRect();
+        if (r && b) onMenu?.(r.node, b.left + 24, b.bottom);
+        break;
+      }
       case "End":
         go(rows.length - 1);
         break;
@@ -172,6 +182,13 @@ export function Tree({ nodes, selected, noai, onOpen }: Props) {
             onClick={() => {
               setFocus(n.path);
               activate(n);
+            }}
+            onContextMenu={(e) => {
+              if (!onMenu) return;
+              e.preventDefault();
+              e.stopPropagation();
+              setFocus(n.path);
+              onMenu(n, e.clientX, e.clientY);
             }}
           >
             {isFolder ? (
@@ -229,7 +246,18 @@ export function Tree({ nodes, selected, noai, onOpen }: Props) {
           <CollapseIcon size={15} />
         </button>
       </div>
-      <div className="tree-list" ref={listRef} role="tree" tabIndex={0} onKeyDown={onKey}>
+      <div
+        className="tree-list"
+        ref={listRef}
+        role="tree"
+        tabIndex={0}
+        onKeyDown={onKey}
+        onContextMenu={(e) => {
+          if (!onMenu) return;
+          e.preventDefault();
+          onMenu(null, e.clientX, e.clientY);
+        }}
+      >
         {visible.length === 0 ? (
           <div className="muted pad">{q ? "Brak pasujących Notatek" : "Pusto"}</div>
         ) : (

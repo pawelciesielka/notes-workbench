@@ -206,6 +206,29 @@ pub fn reject(vault: &Path, id: u64) -> Result<(), String> {
     save(vault, &f)
 }
 
+/// Aktualizuje ścieżki Notatek w kolejce po ich przeniesieniu (stara → nowa).
+pub fn rename_paths(vault: &Path, moved: &std::collections::HashMap<String, String>) -> Result<(), String> {
+    if moved.is_empty() || !file_path(vault).exists() {
+        return Ok(());
+    }
+    let mut f = load(vault)?;
+    let mut changed = false;
+    for p in &mut f.proposals {
+        if let Some(n) = moved.get(&p.note) {
+            p.note = n.clone();
+            changed = true;
+        }
+        if let Some(n) = p.target.as_ref().and_then(|t| moved.get(t)) {
+            p.target = Some(n.clone());
+            changed = true;
+        }
+    }
+    if changed {
+        save(vault, &f)?;
+    }
+    Ok(())
+}
+
 /// Usuwa z kolejki Propozycje dotyczące Notatek, których już nie ma (np. przeniesionych do Kosza).
 pub fn prune(vault: &Path, idx: &Index) -> Result<usize, String> {
     let mut f = load(vault)?;

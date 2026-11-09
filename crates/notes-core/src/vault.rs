@@ -268,7 +268,7 @@ pub fn set_fm_tag(vault: &Path, rel_path: &str, tag: &str, on: bool) -> Result<N
     read_note(vault, rel_path)
 }
 
-fn used_names(dir: &Path) -> std::collections::HashSet<String> {
+pub fn used_names(dir: &Path) -> std::collections::HashSet<String> {
     fs::read_dir(dir)
         .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().to_lowercase()).collect())
         .unwrap_or_default()
@@ -292,7 +292,7 @@ pub fn create_note(vault: &Path, folder: &str, title: &str) -> Result<String, St
 }
 
 /// Przenosi Notatkę razem z jej Załącznikami (`<nazwa>.assets`) pod nową ścieżkę katalogu.
-fn move_note(vault: &Path, rel_path: &str, to_dir_rel: &str) -> Result<String, String> {
+pub fn move_note(vault: &Path, rel_path: &str, to_dir_rel: &str) -> Result<String, String> {
     let src = note_file(vault, rel_path)?;
     if !src.exists() {
         return Err(format!("Nie ma Notatki {rel_path}"));
@@ -310,7 +310,7 @@ fn move_note(vault: &Path, rel_path: &str, to_dir_rel: &str) -> Result<String, S
     Ok(if dir.is_empty() { format!("{new_stem}.md") } else { format!("{dir}/{new_stem}.md") })
 }
 
-fn parent_rel(p: &str) -> &str {
+pub fn parent_rel(p: &str) -> &str {
     p.rfind('/').map_or("", |i| &p[..i])
 }
 

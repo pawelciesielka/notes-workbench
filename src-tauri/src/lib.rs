@@ -382,6 +382,77 @@ fn read_report(state: State<AppState>) -> Result<Option<serde_json::Value>, Stri
     }
 }
 
+impl AppState {
+    /// Po operacjach zmieniających wiele ścieżek naraz: indeks od nowa, wyszukiwanie dogania zmiany.
+    fn reindex(&self) -> Result<(), String> {
+        let v = self.vault()?;
+        *self.index.lock().unwrap() = Some(Index::build(&v));
+        self.with_search(|s, v| s.sync(v))?;
+        Ok(())
+    }
+}
+
+#[derive(Serialize)]
+struct OpResult {
+    path: String,
+    /// Ile Notatek miało poprawione Linki.
+    fixed: usize,
+}
+
+#[tauri::command]
+fn create_folder(app: AppHandle, state: State<AppState>, parent: String, name: String) -> Result<String, String> {
+    let p = notes_core::ops::create_folder(&state.vault()?, &parent, &name)?;
+    start_semantic(&app);
+    Ok(p)
+}
+
+#[tauri::command]
+fn rename_folder(app: AppHandle, state: State<AppState>, path: String, name: String) -> Result<OpResult, String> {
+    let vault = state.vault()?;
+    let (p, fixed) = state.with_index(|idx, _| notes_core::ops::rename_folder(&vault, idx, &path, &name))??;
+    state.reindex()?;
+    start_semantic(&app);
+    Ok(OpResult { path: p, fixed })
+}
+
+#[tauri::command]
+fn move_note(app: AppHandle, state: State<AppState>, path: String, folder: String) -> Result<OpResult, String> {
+    let vault = state.vault()?;
+    let (p, fixed) = state.with_index(|idx, _| notes_core::ops::move_note(&vault, idx, &path, &folder))??;
+    state.reindex()?;
+    start_semantic(&app);
+    Ok(OpResult { path: p, fixed })
+}
+
+#[tauri::command]
+fn trash_folder(state: State<AppState>, path: String) -> Result<String, String> {
+    let p = notes_core::ops::trash_folder(&state.vault()?, &path)?;
+    state.reindex()?;
+    Ok(p)
+}
+
+#[tauri::command]
+fn restore_folder(app: AppHandle, state: State<AppState>, path: String) -> Result<String, String> {
+    let p = notes_core::ops::restore_folder(&state.vault()?, &path)?;
+    state.reindex()?;
+    start_semantic(&app);
+    Ok(p)
+}
+
+#[tauri::command]
+fn set_folder_noai(state: State<AppState>, path: String, on: bool) -> Result<String, String> {
+    let p = notes_core::ops::set_folder_noai(&state.vault()?, &path, on)?;
+    state.reindex()?;
+    Ok(p)
+}
+
+/// Pokazuje plik albo katalog ze Skarbca zaznaczony w Eksploratorze.
+#[tauri::command]
+fn reveal_path(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
+    let p = vault::resolve(&state.vault()?, &path)?;
+    app.opener().reveal_item_in_dir(&p).map_err(|e| e.to_string())
+}
+
 /// Otwiera katalog Skarbca w Eksploratorze Windows.
 #[tauri::command]
 fn reveal_vault(app: AppHandle, state: State<AppState>) -> Result<(), String> {
@@ -479,6 +550,13 @@ pub fn run() {
             read_report,
             open_vault_file,
             reveal_vault,
+            reveal_path,
+            create_folder,
+            rename_folder,
+            move_note,
+            trash_folder,
+            restore_folder,
+            set_folder_noai,
             open_link
         ])
         .run(tauri::generate_context!())

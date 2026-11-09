@@ -1353,3 +1353,125 @@ input::placeholder {
   background: var(--surface);
   box-shadow: var(--shadow-lg);
 }
+
+/* ===== Menu kontekstowe i okna dialogowe ===== */
+.ctx-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 230px;
+  padding: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  outline: none;
+  animation: pop 0.08s ease-out;
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.ctx-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 9px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  text-align: left;
+}
+.ctx-item:hover:not(:disabled),
+.ctx-item.active:not(:disabled) {
+  background: var(--accent-soft);
+  border: none;
+}
+.ctx-item.danger {
+  color: var(--bad-fg);
+}
+.ctx-item.danger:hover:not(:disabled),
+.ctx-item.danger.active:not(:disabled) {
+  background: var(--bad-bg);
+}
+.ctx-icon {
+  width: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.ctx-item.danger .ctx-icon {
+  color: inherit;
+}
+.ctx-label {
+  flex: 1;
+}
+.ctx-hint {
+  font-size: 11.5px;
+  color: var(--faint);
+  font-family: var(--mono);
+}
+.ctx-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+.modal-back {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 10, 20, 0.35);
+  animation: fade 0.1s ease-out;
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+.modal {
+  width: 440px;
+  max-width: 92vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+}
+.modal h2 {
+  font-family: var(--font-display);
+  font-size: 17px;
+  margin: 0 0 6px;
+}
+.modal-label {
+  font-weight: 600;
+  font-size: 13px;
+}
+.modal-hint {
+  line-height: 1.45;
+}
+.modal .actions {
+  margin-top: 10px;
+}
+.picker-list {
+  overflow: auto;
+  min-height: 160px;
+  max-height: 46vh;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  background: var(--bg);
+}
+.tree-row.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
