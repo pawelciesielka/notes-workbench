@@ -500,6 +500,86 @@ input::placeholder {
 .tree-filter {
   margin: 0 10px 6px;
 }
+
+/* Filtr „Zmienione” (suwak po dacie modyfikacji) */
+.tree-age-filter {
+  margin: 0 10px 6px;
+  padding: 6px 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.tree-age-filter.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-softer);
+}
+.tree-age-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.tree-age-filter.on .tree-age-head {
+  color: var(--fg);
+  font-weight: 500;
+}
+.tree-age-head > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-age-count {
+  font-size: 11px;
+  padding: 0 7px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+  font-variant-numeric: tabular-nums;
+}
+.tree-age-filter input[type="range"] {
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.tree-age-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 -2px;
+}
+.tree-age-ticks button {
+  border: none;
+  background: none;
+  padding: 1px 2px;
+  font-size: 10.5px;
+  color: var(--faint);
+  cursor: pointer;
+  box-shadow: none;
+}
+.tree-age-ticks button:hover {
+  color: var(--fg);
+  background: none;
+}
+.tree-age-ticks button.on {
+  color: var(--accent);
+  font-weight: 600;
+}
+.tree-age {
+  margin-left: auto;
+  padding-left: 8px;
+  font-size: 11px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
 .tree-list {
   flex: 1;
   overflow: auto;

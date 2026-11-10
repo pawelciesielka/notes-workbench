@@ -6,15 +6,58 @@ function norm(s: string): string {
   return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
+/** Progi filtra „Zmienione”: od najszerszego do najwęższego (pozycje suwaka). */
+const AGES = [
+  { short: "wszystkie", label: "Wszystkie Notatki", days: 0 },
+  { short: "rok", label: "Zmienione w ostatnim roku", days: 365 },
+  { short: "3 mies.", label: "Zmienione w ostatnich 3 miesiącach", days: 91 },
+  { short: "miesiąc", label: "Zmienione w ostatnim miesiącu", days: 31 },
+  { short: "tydzień", label: "Zmienione w ostatnim tygodniu", days: 7 },
+  { short: "doba", label: "Zmienione w ostatniej dobie", days: 1 },
+];
+const AGE_KEY = "nw.tree.age";
+const DAY = 86_400_000;
+
+function loadAge(): number {
+  try {
+    const v = Number(localStorage.getItem(AGE_KEY));
+    return Number.isInteger(v) && v >= 0 && v < AGES.length ? v : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Krótki opis czasu modyfikacji: „dziś 14:05”, „wczoraj”, „5 dni temu”, „12.03.2025”. */
+function ago(ms: number, now: number): string {
+  const d = new Date(ms);
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
+  const days = Math.floor((midnight.getTime() - ms) / DAY) + 1;
+  if (ms >= midnight.getTime()) return `dziś ${d.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}`;
+  if (days === 1) return "wczoraj";
+  if (days < 7) return `${days} dni temu`;
+  return d.toLocaleDateString("pl-PL");
+}
+
+type Match = (n: TreeNode) => boolean;
+
 /** Drzewo z odfiltrowanymi węzłami: zostają pasujące i ich przodkowie. */
-function filterTree(nodes: TreeNode[], q: string): TreeNode[] {
-  if (!q) return nodes;
+function filterTree(nodes: TreeNode[], match: Match | null): TreeNode[] {
+  if (!match) return nodes;
   const out: TreeNode[] = [];
   for (const n of nodes) {
-    const kids = filterTree(n.children, q);
-    if (norm(n.title).includes(q) || kids.length > 0) out.push({ ...n, children: kids });
+    const kids = filterTree(n.children, match);
+    if (match(n) || kids.length > 0) out.push({ ...n, children: kids });
   }
   return out;
+}
+
+/** Liczba Notatek zmienionych od `since` (z Notatkami folderów). */
+function countNotes(list: TreeNode[], since: number): number {
+  return list.reduce(
+    (s, n) => s + ((n.kind === "note" || n.folder_note) && (n.modified ?? 0) >= since ? 1 : 0) + countNotes(n.children, since),
+    0,
+  );
 }
 
 /** Liczba Notatek w Folderze (z podfolderami i Notatkami folderów). */
@@ -44,9 +87,28 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<string | null>(null);
+  const [age, setAgeState] = useState(loadAge);
   const listRef = useRef<HTMLDivElement>(null);
   const q = norm(query.trim());
-  const visible = useMemo(() => filterTree(nodes, q), [nodes, q]);
+  // Zaokrąglone do minuty, żeby filtr nie przeliczał się przy każdym odświeżeniu.
+  const since = age > 0 ? Math.floor(Date.now() / 60_000) * 60_000 - AGES[age].days * DAY : 0;
+  // Filtr aktywny: Foldery rozwinięte, żeby było widać pasujące Notatki.
+  const filtering = q !== "" || since > 0;
+  const setAge = (v: number) => {
+    setAgeState(v);
+    try {
+      localStorage.setItem(AGE_KEY, String(v));
+    } catch {
+      /* bez zapamiętania */
+    }
+  };
+  const visible = useMemo(() => {
+    if (!filtering) return nodes;
+    const match: Match = (n) =>
+      (q === "" || norm(n.title).includes(q)) && (since === 0 || (n.modified !== null && n.modified >= since));
+    return filterTree(nodes, match);
+  }, [nodes, q, since, filtering]);
+  const matched = useMemo(() => (since > 0 ? countNotes(visible, since) : 0), [visible, since]);
   const counts = useMemo(() => {
     const m = new Map<string, number>();
     const walk = (list: TreeNode[]) =>
@@ -82,13 +144,13 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu }: Props) {
     const out: Row[] = [];
     const walk = (list: TreeNode[], depth: number) =>
       list.forEach((n) => {
-        const open = n.kind === "folder" && (q !== "" || expanded.has(n.path));
+        const open = n.kind === "folder" && (filtering || expanded.has(n.path));
         out.push({ node: n, depth, open });
         if (open) walk(n.children, depth + 1);
       });
     walk(visible, 0);
     return out;
-  }, [visible, expanded, q]);
+  }, [visible, expanded, filtering]);
 
   const toggle = (path: string, open?: boolean) =>
     setExpanded((prev) => {
@@ -165,7 +227,7 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu }: Props) {
   const render = (list: TreeNode[], depth: number) =>
     list.map((n) => {
       const isFolder = n.kind === "folder";
-      const isOpen = isFolder && (q !== "" || expanded.has(n.path));
+      const isOpen = isFolder && (filtering || expanded.has(n.path));
       const locked = !!noai && (noai.has(n.path) || (n.folder_note !== null && noai.has(n.folder_note)));
       const cls = [
         "tree-row",
@@ -214,6 +276,11 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu }: Props) {
                 <LockIcon size={12} />
               </span>
             )}
+            {since > 0 && !isFolder && n.modified !== null && (
+              <span className="tree-age" title={new Date(n.modified).toLocaleString("pl-PL")}>
+                {ago(n.modified, Date.now())}
+              </span>
+            )}
             {isFolder && <span className="tree-count">{counts.get(n.path) ?? 0}</span>}
           </div>
           {isOpen && n.children.length > 0 && (
@@ -246,6 +313,36 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu }: Props) {
           <CollapseIcon size={15} />
         </button>
       </div>
+      <div className={`tree-age-filter${age > 0 ? " on" : ""}`}>
+        <div className="tree-age-head">
+          <span>{AGES[age].label}</span>
+          {age > 0 && (
+            <>
+              <span className="tree-age-count">{matched}</span>
+              <button className="icon-btn tiny" onClick={() => setAge(0)} aria-label="Pokaż wszystkie Notatki" title="Pokaż wszystkie">
+                <XIcon size={12} />
+              </button>
+            </>
+          )}
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={AGES.length - 1}
+          step={1}
+          value={age}
+          onChange={(e) => setAge(Number(e.target.value))}
+          aria-label="Filtr po dacie modyfikacji"
+          aria-valuetext={AGES[age].label}
+        />
+        <div className="tree-age-ticks">
+          {AGES.map((a, i) => (
+            <button key={a.short} className={i === age ? "on" : ""} onClick={() => setAge(i)}>
+              {a.short}
+            </button>
+          ))}
+        </div>
+      </div>
       <div
         className="tree-list"
         ref={listRef}
@@ -259,7 +356,7 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu }: Props) {
         }}
       >
         {visible.length === 0 ? (
-          <div className="muted pad">{q ? "Brak pasujących Notatek" : "Pusto"}</div>
+          <div className="muted pad">{filtering ? "Brak pasujących Notatek" : "Pusto"}</div>
         ) : (
           render(visible, 0)
         )}

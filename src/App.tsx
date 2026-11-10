@@ -139,9 +139,10 @@ export default function App() {
   }, []);
 
   const onChanged = useCallback(
-    (treeChanged: boolean) => {
+    (_treeChanged: boolean) => {
       api.index(false).then(setSummary).catch(() => {});
-      if (treeChanged) loadTrees().catch((e) => setError(String(e)));
+      // Drzewo odświeżane zawsze, bo niesie też daty modyfikacji (filtr „Zmienione”).
+      loadTrees().catch((e) => setError(String(e)));
     },
     [loadTrees],
   );

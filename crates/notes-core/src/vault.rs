@@ -18,7 +18,14 @@ pub struct TreeNode {
     pub order: Option<i64>,
     /// Notatka folderu (ścieżka), otwierana po wybraniu Folderu.
     pub folder_note: Option<String>,
+    /// Czas ostatniej modyfikacji pliku (ms od 1970); dla Folderu: jego Notatki folderu.
+    pub modified: Option<i64>,
     pub children: Vec<TreeNode>,
+}
+
+fn mtime_ms(meta: Option<fs::Metadata>) -> Option<i64> {
+    let t = meta?.modified().ok()?;
+    Some(t.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as i64)
 }
 
 #[derive(Serialize)]
@@ -106,6 +113,7 @@ fn read_dir_tree(vault: &Path, dir: &Path, orders: &HashMap<String, i64>) -> Vec
                 order: orders.get(&r).copied(),
                 path: r,
                 kind: "folder",
+                modified: folder_note.as_ref().and_then(|n| n.modified),
                 folder_note: folder_note.map(|n| n.path),
                 children,
             });
@@ -123,6 +131,7 @@ fn read_dir_tree(vault: &Path, dir: &Path, orders: &HashMap<String, i64>) -> Vec
                 path: rel(vault, &p),
                 kind: "note",
                 folder_note: None,
+                modified: mtime_ms(e.metadata().ok()),
                 children: Vec::new(),
             });
         }

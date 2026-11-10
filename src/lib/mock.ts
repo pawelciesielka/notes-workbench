@@ -2,29 +2,32 @@
  * Przykładowe dane do podglądu interfejsu w zwykłej przeglądarce (`npm run dev` poza Tauri).
  * Ładowane tylko w trybie deweloperskim; w aplikacji wszystkie wywołania idą do backendu.
  */
+const H = 3_600_000;
+const ago = (h: number) => Date.now() - h * H;
+
 const tree = [
   {
-    name: "Przykłady", path: "Przykłady", kind: "folder", title: "Przykłady", order: 1, folder_note: "Przykłady/Przykłady.md",
+    name: "Przykłady", path: "Przykłady", kind: "folder", title: "Przykłady", order: 1, folder_note: "Przykłady/Przykłady.md", modified: ago(20*24),
     children: [
       {
-        name: "Monitoring", path: "Przykłady/Monitoring", kind: "folder", title: "Monitoring", order: 1, folder_note: null,
+        name: "Monitoring", path: "Przykłady/Monitoring", kind: "folder", title: "Monitoring", order: 1, folder_note: null, modified: ago(3*24*365),
         children: [
-          { name: "graphite", path: "Przykłady/Monitoring/graphite.md", kind: "note", title: "graphite", order: 1, folder_note: null, children: [] },
-          { name: "grafana", path: "Przykłady/Monitoring/grafana.md", kind: "note", title: "Grafana – dashboardy", order: 2, folder_note: null, children: [] },
+          { name: "graphite", path: "Przykłady/Monitoring/graphite.md", kind: "note", title: "graphite", order: 1, folder_note: null, modified: ago(30*24), children: [] },
+          { name: "grafana", path: "Przykłady/Monitoring/grafana.md", kind: "note", title: "Grafana – dashboardy", order: 2, folder_note: null, modified: null, children: [] },
         ],
       },
-      { name: "Router", path: "Przykłady/Router.md", kind: "note", title: "Router domowy", order: 2, folder_note: null, children: [] },
-      { name: "Sieć", path: "Przykłady/Sieć.md", kind: "note", title: "Sieć domowa", order: 3, folder_note: null, children: [] },
+      { name: "Router", path: "Przykłady/Router.md", kind: "note", title: "Router domowy", order: 2, folder_note: null, modified: ago(2), children: [] },
+      { name: "Sieć", path: "Przykłady/Sieć.md", kind: "note", title: "Sieć domowa", order: 3, folder_note: null, modified: ago(5*24), children: [] },
     ],
   },
   {
-    name: "Dziennik", path: "Dziennik", kind: "folder", title: "Dziennik", order: 2, folder_note: null,
+    name: "Dziennik", path: "Dziennik", kind: "folder", title: "Dziennik", order: 2, folder_note: null, modified: ago(26),
     children: [
-      { name: "2024-03-15", path: "Dziennik/2024-03-15.md", kind: "note", title: "Notatki z 15-03-2024", order: 1, folder_note: null, children: [] },
+      { name: "2024-03-15", path: "Dziennik/2024-03-15.md", kind: "note", title: "Notatki z 15-03-2024", order: 1, folder_note: null, modified: ago(40*24), children: [] },
     ],
   },
-  { name: "systemd", path: "systemd.md", kind: "note", title: "Usługa systemd – przykład", order: 3, folder_note: null, children: [] },
-  { name: "Pomysły", path: "Pomysły.md", kind: "note", title: "Pomysły", order: 4, folder_note: null, children: [] },
+  { name: "systemd", path: "systemd.md", kind: "note", title: "Usługa systemd – przykład", order: 3, folder_note: null, modified: ago(400*24), children: [] },
+  { name: "Pomysły", path: "Pomysły.md", kind: "note", title: "Pomysły", order: 4, folder_note: null, modified: null, children: [] },
 ];
 
 const body = `Krótka instrukcja wdrożenia aplikacji jako **usługi systemd** w Ubuntu. Zobacz też [[Router domowy]] i [[Nieistniejąca notatka]]. #linux #admin

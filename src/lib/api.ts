@@ -14,6 +14,8 @@ export type TreeNode = {
   title: string;
   order: number | null;
   folder_note: string | null;
+  /** Ostatnia modyfikacja pliku (ms od 1970); dla Folderu: jego Notatki folderu. */
+  modified: number | null;
   children: TreeNode[];
 };
 

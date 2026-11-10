@@ -265,7 +265,7 @@ impl Server {
                     let n = find(tree, &folder).ok_or(format!("Nie ma Folderu {folder}"))?;
                     let mut v = n.children;
                     if let Some(fnote) = n.folder_note {
-                        v.insert(0, TreeNode { name: String::new(), title: format!("(Notatka folderu) {}", n.title), path: fnote, kind: "note", order: None, folder_note: None, children: vec![] });
+                        v.insert(0, TreeNode { name: String::new(), title: format!("(Notatka folderu) {}", n.title), path: fnote, kind: "note", order: None, folder_note: None, modified: None, children: vec![] });
                     }
                     v
                 };
