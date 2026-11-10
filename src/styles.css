@@ -1722,3 +1722,109 @@ input::placeholder {
   pointer-events: none;
   box-shadow: var(--shadow, 0 4px 14px rgba(0, 0, 0, 0.15));
 }
+
+/* ===== Edytor i podgląd obok siebie ===== */
+.layout-picker {
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  margin-right: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.layout-picker .icon-btn {
+  width: 26px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--faint);
+}
+.layout-picker .icon-btn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.note.wide {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.note.wide .note-head {
+  max-width: none;
+}
+.split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0;
+}
+.split-top,
+.split-bottom {
+  flex-direction: column;
+}
+.split-pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.split-single .split-pane {
+  flex: 1;
+}
+.split-editor {
+  flex-grow: 0;
+  flex-shrink: 0;
+}
+.split:not(.split-single) .editor {
+  max-width: none;
+}
+.split-preview {
+  flex: 1 1 0;
+  overflow: auto;
+  padding: 4px 20px 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.split-divider {
+  flex: 0 0 10px;
+  position: relative;
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+}
+.split-top .split-divider,
+.split-bottom .split-divider {
+  cursor: row-resize;
+}
+.split-divider::after {
+  content: "";
+  position: absolute;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.12s;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 36px;
+  transform: translate(-50%, -50%);
+}
+.split-top .split-divider::after,
+.split-bottom .split-divider::after {
+  width: 36px;
+  height: 4px;
+}
+.split-divider:hover::after,
+.split-divider:focus-visible::after,
+.split.dragging .split-divider::after {
+  background: var(--accent);
+}
+.split.dragging {
+  user-select: none;
+  cursor: col-resize;
+}
+.split-top.dragging,
+.split-bottom.dragging {
+  cursor: row-resize;
+}
+.split.dragging .split-pane {
+  pointer-events: none;
+}

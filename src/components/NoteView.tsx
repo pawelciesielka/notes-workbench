@@ -20,7 +20,9 @@ import {
 import { Editor } from "./Editor";
 import { useNoteScale } from "../lib/zoom";
 import { attachFiles, filesOf } from "../lib/attach";
-import { CheckIcon, LinkIcon, LockIcon, PencilIcon, SparkIcon, TrashIcon, UnlockIcon, XIcon } from "./Icons";
+import { LAYOUTS, useSplit } from "../lib/split";
+import { rehypeSourceLines, scrollPreviewTo } from "../lib/scrollSync";
+import { CheckIcon, LayoutIcon, LinkIcon, LockIcon, PencilIcon, SparkIcon, TrashIcon, UnlockIcon, XIcon } from "./Icons";
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|bmp|webp|svg|ico)$/i;
 const TRASH = ".kosz/";
@@ -56,10 +58,32 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
 
   const [similar, setSimilar] = useState<NoteRef[]>([]);
 
+  // Podgląd obok edytora pokazuje zapisaną treść; Linki odświeżane po każdym zapisie.
+  const [layout, setLayout, ratio, setRatio] = useSplit();
+  const [dragging, setDragging] = useState(false);
+  const splitRef = useRef<HTMLDivElement>(null);
+  // Podgląd idzie za edytorem: ostatnia pozycja edytora, ponawiana po odświeżeniu podglądu.
+  const previewRef = useRef<HTMLDivElement>(null);
+  const editorPos = useRef({ line: 1, offset: 0, atEnd: false });
+  const onScrollLine = useCallback((line: number, offset: number, atEnd: boolean) => {
+    editorPos.current = { line, offset, atEnd };
+    if (previewRef.current) scrollPreviewTo(previewRef.current, line, offset, atEnd);
+  }, []);
+  const splitOnRef = useRef(false);
+  splitOnRef.current = edit && layout !== "single";
+  // Numer zapisu: pozycje Linków pasują do treści tylko z tego samego zapisu.
+  const saveSeq = useRef(0);
+  const [linksSeq, setLinksSeq] = useState(0);
+  const splitActive = edit && layout !== "single";
+
   const loadLinks = useCallback(() => {
+    const seqAtStart = saveSeq.current;
     api
       .noteLinks(path)
-      .then(setLinks)
+      .then((l) => {
+        setLinks(l);
+        setLinksSeq(seqAtStart);
+      })
       .catch(() => setLinks(null));
     api
       .similarNotes(path)
@@ -95,7 +119,9 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
     try {
       const n = await api.saveNote(path, r.draft, r.raw);
       r.raw = n.raw;
+      saveSeq.current++;
       setNote(n);
+      if (splitOnRef.current) loadLinks();
       setSave(r.dirty ? "dirty" : "saved");
       onChanged(false);
     } catch (e) {
@@ -103,7 +129,7 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
       setSave("error");
       onError(String(e));
     }
-  }, [path, onChanged, onError]);
+  }, [path, onChanged, onError, loadLinks]);
 
   // Zapis przy zamknięciu Notatki (przełączenie na inną).
   useEffect(() => () => void flush(), [flush]);
@@ -125,6 +151,30 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
     }
     setEdit(!edit);
   }, [edit, flush, loadLinks]);
+
+  // Po odświeżeniu podglądu (zapis, Linki, zmiana układu) wraca do miejsca edytora.
+  useEffect(() => {
+    if (!splitActive || !previewRef.current) return;
+    const { line, offset, atEnd } = editorPos.current;
+    scrollPreviewTo(previewRef.current, line, offset, atEnd);
+  }, [splitActive, note, links, linksSeq, layout]);
+
+  // Wczytany obraz zmienia wysokości w podglądzie: wyrównanie jeszcze raz.
+  useEffect(() => {
+    const pane = previewRef.current;
+    if (!splitActive || !pane) return;
+    const onLoad = () => {
+      const { line, offset, atEnd } = editorPos.current;
+      scrollPreviewTo(pane, line, offset, atEnd);
+    };
+    pane.addEventListener("load", onLoad, true);
+    return () => pane.removeEventListener("load", onLoad, true);
+  }, [splitActive, layout]);
+
+  // Włączenie podglądu obok edytora: Linki do zapisanej treści.
+  useEffect(() => {
+    if (splitActive) loadLinks();
+  }, [splitActive, loadLinks]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -158,6 +208,7 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
         const n = await api.saveNote(path, (base ? base + "\n\n" : "") + md + "\n", r.raw);
         r.raw = n.raw;
         r.draft = n.body;
+        saveSeq.current++;
         setNote(n);
         setDraft(n.body);
         onChanged(false);
@@ -378,95 +429,12 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
 
   const crumbs = note.path.split("/").slice(0, -1);
   // Pozycje Linków dotyczą zapisanej treści; podczas edycji widok nie jest pokazywany.
-  const shownBody = links && !edit ? linkify(note.body, links.spans) : note.body;
+  const shownBody =
+    links && (!edit || layout !== "single") && linksSeq === saveSeq.current ? linkify(note.body, links.spans) : note.body;
   const saveLabel = { saved: "Zapisano", dirty: "Zmiany…", saving: "Zapisywanie…", error: "Błąd zapisu" }[save];
 
-  return (
-    <div className={`note-wrap${pdf ? " with-pdf" : ""}`} style={{ "--note-scale": scale } as CSSProperties}>
-      {scaleFlash && (
-        <button className="scale-badge" onClick={() => setScale(1)} title="Przywróć 100% (Ctrl+0)">
-          {Math.round(scale * 100)}%
-        </button>
-      )}
-      <div className={`note${edit ? " editing" : ""}${dropping ? " dropping" : ""}`} ref={contentRef} {...dropProps}>
-        {dropping && <div className="drop-hint">Upuść, aby dodać Załącznik na końcu Notatki</div>}
-        <div className="note-head">
-          <div className="crumbs">
-            {inTrash && <span className="tag-name">Kosz ·&nbsp;</span>}
-            {(crumbs[0] === ".kosz" ? crumbs.slice(1) : crumbs).length === 0
-              ? "Skarbiec"
-              : (crumbs[0] === ".kosz" ? crumbs.slice(1) : crumbs).map((c, i) => (
-                  <span key={i}>
-                    {i > 0 && <span className="sep">›</span>}
-                    {c}
-                  </span>
-                ))}
-          </div>
-          <div className="note-title-row">
-            {edit ? (
-              <input
-                className="note-title title-input"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onBlur={() => void commitTitle()}
-                onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
-                aria-label="Tytuł Notatki"
-              />
-            ) : (
-              <h1 className="note-title">{note.title}</h1>
-            )}
-            <div className="note-actions">
-              {edit && <span className={`save-state ${save}`}>{saveLabel}</span>}
-              {inTrash ? (
-                <button className="primary" onClick={restore}>
-                  Przywróć z Kosza
-                </button>
-              ) : (
-                <>
-                  <button
-                    className={`ghost toggle${noai ? " noai-on" : ""}`}
-                    onClick={() => void toggleNoai()}
-                    title={
-                      noai
-                        ? ownNoai
-                          ? "Notatka jest ukryta przed AI (serwer MCP jej nie widzi). Kliknij, aby udostępnić."
-                          : "Ukryta przed AI przez Tag #noai na Notatce folderu."
-                        : "Ukryj Notatkę przed AI: serwer MCP nie pokaże jej Claude (dodaje Tag noai)."
-                    }
-                  >
-                    {noai ? <LockIcon size={15} /> : <UnlockIcon size={15} />}
-                    {noai ? "Ukryta przed AI" : "Widoczna dla AI"}
-                  </button>
-                  <button className={edit ? "primary" : ""} onClick={() => void toggleEdit()} title="Ctrl+E">
-                    {edit ? <CheckIcon size={15} /> : <PencilIcon size={15} />}
-                    {edit ? "Gotowe" : "Edytuj"}
-                  </button>
-                  <button
-                    className="icon-btn danger"
-                    onClick={() => void toTrash()}
-                    title="Przenieś do Kosza"
-                    aria-label="Przenieś do Kosza"
-                  >
-                    <TrashIcon />
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-          {!edit && links && links.tags.length > 0 && (
-            <div className="note-tags">
-              {links.tags.map((t) => (
-                <button key={t} className="chip" onClick={() => onTag(t)}>
-                  #{t}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        {edit ? (
-          <Editor value={draft} summary={summary} onChange={onDraft} onSave={() => void flush()} onFiles={onFiles} />
-        ) : (
-          <>
+  const preview = (
+    <>
             {note.body.trim() === "" ? (
               <div className="muted empty-note">
                 Pusta Notatka. <button onClick={() => void toggleEdit()}>Edytuj</button>
@@ -475,7 +443,7 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
               <div className="markdown">
                 <Markdown
                   remarkPlugins={[remarkGfm, remarkBreaks]}
-                  rehypePlugins={[rehypeRaw]}
+                  rehypePlugins={[rehypeRaw, rehypeSourceLines]}
                   urlTransform={(u) => u}
                   components={components}
                 >
@@ -542,7 +510,180 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
                 )}
               </section>
             )}
-          </>
+    </>
+  );
+
+  const splitOn = edit && layout !== "single";
+  const vertical = layout === "top" || layout === "bottom";
+  // Udział edytora; podgląd zajmuje resztę.
+  const editorPane = (
+    <div key="ed" className="split-pane split-editor" style={{ flexBasis: splitOn ? `${ratio * 100}%` : "100%" }}>
+      <Editor
+        value={draft}
+        summary={summary}
+        onChange={onDraft}
+        onSave={() => void flush()}
+        onFiles={onFiles}
+        onScrollLine={onScrollLine}
+      />
+    </div>
+  );
+  const previewPane = splitOn ? (
+    <div key="pv" ref={previewRef} className="split-pane split-preview" aria-label="Podgląd">
+      {preview}
+    </div>
+  ) : null;
+  const editorFirst = layout === "left" || layout === "top";
+  const divider = splitOn ? (
+    <div
+      key="dv"
+      className="split-divider"
+      role="separator"
+      aria-orientation={vertical ? "horizontal" : "vertical"}
+      aria-valuenow={Math.round(ratio * 100)}
+      aria-label="Proporcja edytora i podglądu"
+      tabIndex={0}
+      title="Przeciągnij, aby zmienić proporcje. Dwuklik: po równo."
+      onPointerDown={(e) => {
+        const box = splitRef.current?.getBoundingClientRect();
+        if (!box) return;
+        e.preventDefault();
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        setDragging(true);
+        const at = (ev: PointerEvent) => {
+          const f = vertical ? (ev.clientY - box.top) / box.height : (ev.clientX - box.left) / box.width;
+          return editorFirst ? f : 1 - f;
+        };
+        const move = (ev: PointerEvent) => setRatio(at(ev), false);
+        const up = (ev: PointerEvent) => {
+          setRatio(at(ev));
+          setDragging(false);
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", up);
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+      }}
+      onDoubleClick={() => setRatio(0.5)}
+      onKeyDown={(e) => {
+        const grow = vertical ? { ArrowDown: 1, ArrowUp: -1 } : { ArrowRight: 1, ArrowLeft: -1 };
+        const d = grow[e.key as keyof typeof grow];
+        if (!d) return;
+        e.preventDefault();
+        setRatio(ratio + (editorFirst ? d : -d) * 0.05);
+      }}
+    />
+  ) : null;
+
+  return (
+    <div className={`note-wrap${pdf ? " with-pdf" : ""}`} style={{ "--note-scale": scale } as CSSProperties}>
+      {scaleFlash && (
+        <button className="scale-badge" onClick={() => setScale(1)} title="Przywróć 100% (Ctrl+0)">
+          {Math.round(scale * 100)}%
+        </button>
+      )}
+      <div className={`note${edit ? " editing" : ""}${splitActive ? " wide" : ""}${dropping ? " dropping" : ""}`} ref={contentRef} {...dropProps}>
+        {dropping && <div className="drop-hint">Upuść, aby dodać Załącznik na końcu Notatki</div>}
+        <div className="note-head">
+          <div className="crumbs">
+            {inTrash && <span className="tag-name">Kosz ·&nbsp;</span>}
+            {(crumbs[0] === ".kosz" ? crumbs.slice(1) : crumbs).length === 0
+              ? "Skarbiec"
+              : (crumbs[0] === ".kosz" ? crumbs.slice(1) : crumbs).map((c, i) => (
+                  <span key={i}>
+                    {i > 0 && <span className="sep">›</span>}
+                    {c}
+                  </span>
+                ))}
+          </div>
+          <div className="note-title-row">
+            {edit ? (
+              <input
+                className="note-title title-input"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onBlur={() => void commitTitle()}
+                onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+                aria-label="Tytuł Notatki"
+              />
+            ) : (
+              <h1 className="note-title">{note.title}</h1>
+            )}
+            <div className="note-actions">
+              {edit && <span className={`save-state ${save}`}>{saveLabel}</span>}
+              {edit && (
+                <div className="layout-picker" role="radiogroup" aria-label="Układ edytora i podglądu">
+                  {LAYOUTS.map((l) => (
+                    <button
+                      key={l.id}
+                      role="radio"
+                      aria-checked={layout === l.id}
+                      className={`icon-btn${layout === l.id ? " on" : ""}`}
+                      title={l.label}
+                      aria-label={l.label}
+                      onClick={() => setLayout(l.id)}
+                    >
+                      <LayoutIcon layout={l.id} size={16} />
+                    </button>
+                  ))}
+                </div>
+              )}
+              {inTrash ? (
+                <button className="primary" onClick={restore}>
+                  Przywróć z Kosza
+                </button>
+              ) : (
+                <>
+                  <button
+                    className={`ghost toggle${noai ? " noai-on" : ""}`}
+                    onClick={() => void toggleNoai()}
+                    title={
+                      noai
+                        ? ownNoai
+                          ? "Notatka jest ukryta przed AI (serwer MCP jej nie widzi). Kliknij, aby udostępnić."
+                          : "Ukryta przed AI przez Tag #noai na Notatce folderu."
+                        : "Ukryj Notatkę przed AI: serwer MCP nie pokaże jej Claude (dodaje Tag noai)."
+                    }
+                  >
+                    {noai ? <LockIcon size={15} /> : <UnlockIcon size={15} />}
+                    {noai ? "Ukryta przed AI" : "Widoczna dla AI"}
+                  </button>
+                  <button className={edit ? "primary" : ""} onClick={() => void toggleEdit()} title="Ctrl+E">
+                    {edit ? <CheckIcon size={15} /> : <PencilIcon size={15} />}
+                    {edit ? "Gotowe" : "Edytuj"}
+                  </button>
+                  <button
+                    className="icon-btn danger"
+                    onClick={() => void toTrash()}
+                    title="Przenieś do Kosza"
+                    aria-label="Przenieś do Kosza"
+                  >
+                    <TrashIcon />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          {!edit && links && links.tags.length > 0 && (
+            <div className="note-tags">
+              {links.tags.map((t) => (
+                <button key={t} className="chip" onClick={() => onTag(t)}>
+                  #{t}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {edit ? (
+          <div
+            ref={splitRef}
+            className={`split split-${layout}${dragging ? " dragging" : ""}`}
+            style={{ "--split": ratio } as CSSProperties}
+          >
+            {layout === "right" || layout === "bottom" ? [previewPane, divider, editorPane] : [editorPane, divider, previewPane]}
+          </div>
+        ) : (
+          preview
         )}
       </div>
       {pdf && (

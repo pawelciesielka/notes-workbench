@@ -16,6 +16,11 @@ type Props = {
   onSave: () => void;
   /** Wklejone albo upuszczone pliki: zapisuje je jako Załączniki i zwraca Markdown do wstawienia. */
   onFiles?: (files: File[], pasted: boolean) => Promise<string>;
+  /**
+   * Miejsce pracy w edytorze: linia (ułamkowa, od 1) z kursorem albo ze środka widoku, gdy kursora nie widać,
+   * jej odległość w px od góry widoku i czy edytor przewinięto do końca.
+   */
+  onScrollLine?: (line: number, offset: number, atEnd: boolean) => void;
 };
 
 function norm(s: string): string {
@@ -106,12 +111,13 @@ function insertBlock(v: EditorView, pos: number, md: string) {
   v.focus();
 }
 
-export function Editor({ value, summary, onChange, onSave, onFiles }: Props) {
+export function Editor({ value, summary, onChange, onSave, onFiles, onScrollLine }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+  const syncRef = useRef<() => void>(() => {});
   // Aktualne wartości dla rozszerzeń utworzonych raz.
-  const latest = useRef({ summary, onChange, onSave, onFiles });
-  latest.current = { summary, onChange, onSave, onFiles };
+  const latest = useRef({ summary, onChange, onSave, onFiles, onScrollLine });
+  latest.current = { summary, onChange, onSave, onFiles, onScrollLine };
 
   useEffect(() => {
     const v = new EditorView({
@@ -162,6 +168,8 @@ export function Editor({ value, summary, onChange, onSave, onFiles }: Props) {
           }),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) latest.current.onChange(u.state.doc.toString());
+            // Układu nie wolno czytać w trakcie aktualizacji: po niej.
+            if (u.docChanged || u.selectionSet || u.geometryChanged) window.setTimeout(() => syncRef.current(), 0);
           }),
           theme,
           syntaxHighlighting(highlight),
@@ -170,7 +178,32 @@ export function Editor({ value, summary, onChange, onSave, onFiles }: Props) {
     });
     view.current = v;
     v.focus();
-    return () => v.destroy();
+    const sc = v.scrollDOM;
+    const onScroll = () => {
+      const cb = latest.current.onScrollLine;
+      if (!cb || !sc.isConnected) return;
+      const viewTop = sc.getBoundingClientRect().top - v.documentTop;
+      const h = sc.clientHeight;
+      const head = v.state.selection.main.head;
+      let blk = v.lineBlockAt(head);
+      let line = v.state.doc.lineAt(head).number;
+      let part = 0;
+      if (blk.top < viewTop || blk.bottom > viewTop + h) {
+        const mid = viewTop + h / 2;
+        blk = v.lineBlockAtHeight(mid);
+        line = v.state.doc.lineAt(blk.from).number;
+        part = blk.height > 0 ? Math.min(1, Math.max(0, (mid - blk.top) / blk.height)) : 0;
+      }
+      const scrollable = sc.scrollHeight > sc.clientHeight + 2;
+      cb(line + part, blk.top + part * blk.height - viewTop, scrollable && sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 2);
+    };
+    syncRef.current = onScroll;
+    sc.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      sc.removeEventListener("scroll", onScroll);
+      syncRef.current = () => {};
+      v.destroy();
+    };
     // Edytor tworzymy raz na Notatkę (komponent ma key = ścieżka).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

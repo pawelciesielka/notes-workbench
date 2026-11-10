@@ -182,3 +182,22 @@ export const PlugIcon = (p: P) => (
     <path d="M12 16v5" />
   </Svg>
 );
+
+/** Układ edytora i podglądu: wypełniona część to edytor. */
+export const LayoutIcon = ({ layout, ...p }: P & { layout: "single" | "left" | "right" | "top" | "bottom" }) => {
+  const fill = {
+    single: { x: 3, y: 4, width: 18, height: 16 },
+    left: { x: 3, y: 4, width: 9, height: 16 },
+    right: { x: 12, y: 4, width: 9, height: 16 },
+    top: { x: 3, y: 4, width: 18, height: 8 },
+    bottom: { x: 3, y: 12, width: 18, height: 8 },
+  }[layout];
+  return (
+    <Svg {...p}>
+      <rect {...fill} fill="currentColor" opacity={0.3} stroke="none" />
+      <rect x={3} y={4} width={18} height={16} rx={2} />
+      {(layout === "left" || layout === "right") && <path d="M12 4v16" />}
+      {(layout === "top" || layout === "bottom") && <path d="M3 12h18" />}
+    </Svg>
+  );
+};
