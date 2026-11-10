@@ -77,6 +77,11 @@ const mcp = {
 
 const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
   mcp_status: () => mcp,
+  save_note: (a) => ({ path: a.path, title: "Usługa systemd – przykład", frontmatter: "", body: a.body, raw: a.body }),
+  add_attachment: (a) => {
+    const name = String(a.name);
+    return { name, link: `systemd.assets/${encodeURI(name)}`, image: /\.(png|jpe?g|gif|webp)$/i.test(name) };
+  },
   get_vault: () => "C:\\Notatki",
   set_vault: () => null,
   vault_tree: (a) => (a.trash ? [] : tree),

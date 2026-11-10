@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ComponentProps, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentProps, type CSSProperties, type DragEvent } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -19,6 +19,7 @@ import {
 } from "../lib/api";
 import { Editor } from "./Editor";
 import { useNoteScale } from "../lib/zoom";
+import { attachFiles, filesOf } from "../lib/attach";
 import { CheckIcon, LinkIcon, LockIcon, PencilIcon, SparkIcon, TrashIcon, UnlockIcon, XIcon } from "./Icons";
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|bmp|webp|svg|ico)$/i;
@@ -135,6 +136,75 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [toggleEdit, inTrash]);
+
+  // Załączniki: w edytorze trafiają w miejsce kursora (albo upuszczenia), w podglądzie na koniec Notatki.
+  const [dropping, setDropping] = useState(false);
+  const onFiles = useCallback(
+    (files: File[], pasted: boolean) =>
+      attachFiles(path, files, pasted).catch((e) => {
+        onError(String(e));
+        return "";
+      }),
+    [path, onError],
+  );
+  const appendFiles = useCallback(
+    async (files: File[], pasted: boolean) => {
+      if (inTrash || !files.length) return;
+      try {
+        await flush();
+        const md = await attachFiles(path, files, pasted);
+        const r = ref.current;
+        const base = r.draft.replace(/\s+$/, "");
+        const n = await api.saveNote(path, (base ? base + "\n\n" : "") + md + "\n", r.raw);
+        r.raw = n.raw;
+        r.draft = n.body;
+        setNote(n);
+        setDraft(n.body);
+        onChanged(false);
+        loadLinks();
+      } catch (e) {
+        onError(String(e));
+      }
+    },
+    [path, inTrash, flush, onChanged, onError, loadLinks],
+  );
+
+  // Ctrl+V ze zrzutem ekranu w podglądzie (edytor obsługuje wklejanie sam).
+  useEffect(() => {
+    if (edit || inTrash) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest("input, textarea, [contenteditable=true]")) return;
+      const files = filesOf(e.clipboardData);
+      if (!files.length) return;
+      e.preventDefault();
+      void appendFiles(files, true);
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [edit, inTrash, appendFiles]);
+
+  const dropProps =
+    edit || inTrash
+      ? {}
+      : {
+          onDragOver: (e: DragEvent) => {
+            if (!e.dataTransfer.types.includes("Files")) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            setDropping(true);
+          },
+          onDragLeave: (e: DragEvent) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);
+          },
+          onDrop: (e: DragEvent) => {
+            setDropping(false);
+            const files = filesOf(e.dataTransfer);
+            if (!files.length) return;
+            e.preventDefault();
+            void appendFiles(files, false);
+          },
+        };
 
   if (!note) return <div className="note muted pad">Wczytywanie…</div>;
 
@@ -318,7 +388,8 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
           {Math.round(scale * 100)}%
         </button>
       )}
-      <div className={`note${edit ? " editing" : ""}`} ref={contentRef}>
+      <div className={`note${edit ? " editing" : ""}${dropping ? " dropping" : ""}`} ref={contentRef} {...dropProps}>
+        {dropping && <div className="drop-hint">Upuść, aby dodać Załącznik na końcu Notatki</div>}
         <div className="note-head">
           <div className="crumbs">
             {inTrash && <span className="tag-name">Kosz ·&nbsp;</span>}
@@ -393,7 +464,7 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
           )}
         </div>
         {edit ? (
-          <Editor value={draft} summary={summary} onChange={onDraft} onSave={() => void flush()} />
+          <Editor value={draft} summary={summary} onChange={onDraft} onSave={() => void flush()} onFiles={onFiles} />
         ) : (
           <>
             {note.body.trim() === "" ? (

@@ -15,6 +15,9 @@ są dla serwera niewidoczne.
 Etap 5: Claude przez MCP proponuje powiązania i Tagi (`propose_relations`, `propose_tags`, `list_proposals`);
 czekają w `.notes-workbench/propozycje.json` na decyzję w widoku „Propozycje” aplikacji (ADR 0002).
 
+Załączniki: zrzut ekranu wklejony Ctrl+V albo pliki przeciągnięte na Notatkę trafiają do `<Notatka>.assets/`.
+W edytorze Link wstawia się w miejscu kursora (albo upuszczenia), w podglądzie na końcu Notatki.
+
 ## Serwer MCP
 
 Serwerem jest sama aplikacja: `notes-workbench.exe --mcp [--vault <katalog>]` (stdin/stdout, bez okna).

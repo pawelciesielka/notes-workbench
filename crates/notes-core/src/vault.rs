@@ -405,3 +405,77 @@ mod tests {
         assert!(resolve(v, "a/b.md").is_ok());
     }
 }
+
+#[derive(Serialize, Debug)]
+pub struct Attachment {
+    /// Nazwa pliku w `<Notatka>.assets`.
+    pub name: String,
+    /// Adres względem katalogu Notatki, gotowy do Markdownu (`Notatka.assets/plik.png`).
+    pub link: String,
+    pub image: bool,
+}
+
+const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "ico"];
+
+/// Zapisuje plik jako Załącznik Notatki (`<nazwa>.assets/`), z unikalną nazwą.
+pub fn add_attachment(vault: &Path, note_rel: &str, name: &str, data: &[u8]) -> Result<Attachment, String> {
+    if note_rel.starts_with(&format!("{TRASH_DIR}/")) {
+        return Err("Notatki w Koszu nie można zmieniać".into());
+    }
+    let note = resolve(vault, note_rel)?;
+    if !note.is_file() {
+        return Err(format!("Nie ma Notatki {note_rel}"));
+    }
+    let stem = note.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let assets_name = format!("{stem}.assets");
+    let dir = note.with_file_name(&assets_name);
+    fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+
+    let file = Path::new(name).file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let (base, ext) = match file.rfind('.') {
+        Some(i) if i > 0 => (&file[..i], file[i + 1..].to_lowercase()),
+        _ => (file.as_str(), String::new()),
+    };
+    let base = amno_import::names::sanitize(if base.is_empty() { "plik" } else { base });
+    let ext: String = ext.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    let dot = if ext.is_empty() { String::new() } else { format!(".{ext}") };
+    let mut n = 1;
+    let final_name = loop {
+        let cand = if n == 1 { format!("{base}{dot}") } else { format!("{base}-{n}{dot}") };
+        if !dir.join(&cand).exists() {
+            break cand;
+        }
+        n += 1;
+    };
+    let dest = dir.join(&final_name);
+    fs::write(&dest, data).map_err(|e| format!("{}: {e}", dest.display()))?;
+    Ok(Attachment {
+        link: amno_import::names::enc_url_path(&format!("{assets_name}/{final_name}")),
+        image: IMAGE_EXTS.contains(&ext.as_str()),
+        name: final_name,
+    })
+}
+
+#[cfg(test)]
+mod attachment_tests {
+    use super::*;
+
+    #[test]
+    fn saves_with_unique_name_and_encoded_link() {
+        let d = std::env::temp_dir().join(format!("nw-att-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(d.join("Projekty")).unwrap();
+        fs::write(d.join("Projekty/Moja notatka.md"), "x").unwrap();
+        let a = add_attachment(&d, "Projekty/Moja notatka.md", "zrzut ekranu.PNG", b"1").unwrap();
+        assert_eq!(a.name, "zrzut ekranu.png");
+        assert_eq!(a.link, "Moja%20notatka.assets/zrzut%20ekranu.png");
+        assert!(a.image);
+        let b = add_attachment(&d, "Projekty/Moja notatka.md", "../zrzut ekranu.png", b"2").unwrap();
+        assert_eq!(b.name, "zrzut ekranu-2.png");
+        assert_eq!(fs::read(d.join("Projekty/Moja notatka.assets/zrzut ekranu-2.png")).unwrap(), b"2");
+        let c = add_attachment(&d, "Projekty/Moja notatka.md", "umowa.pdf", b"3").unwrap();
+        assert!(!c.image);
+        assert!(add_attachment(&d, ".kosz/x.md", "a.png", b"").is_err());
+        let _ = fs::remove_dir_all(&d);
+    }
+}

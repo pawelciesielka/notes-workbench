@@ -292,6 +292,19 @@ fn save_note(state: State<AppState>, path: String, body: String, expected: Strin
     Ok(n)
 }
 
+/// Załącznik Notatki: treść w surowym ciele żądania, Notatka i nazwa w nagłówkach (zakodowane URI).
+#[tauri::command]
+fn add_attachment(state: State<AppState>, request: tauri::ipc::Request<'_>) -> Result<vault::Attachment, String> {
+    let header = |k: &str| -> Result<String, String> {
+        let v = request.headers().get(k).and_then(|v| v.to_str().ok()).ok_or(format!("Brak nagłówka {k}"))?;
+        urlencoding::decode(v).map(|s| s.into_owned()).map_err(|e| e.to_string())
+    };
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err("Oczekiwano danych pliku".into());
+    };
+    vault::add_attachment(&state.vault()?, &header("x-note")?, &header("x-name")?, data)
+}
+
 #[tauri::command]
 fn set_note_title(state: State<AppState>, path: String, title: String) -> Result<vault::NoteData, String> {
     let n = vault::set_title(&state.vault()?, &path, &title)?;
@@ -546,6 +559,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            add_attachment,
             get_vault,
             set_vault,
             import_amno,

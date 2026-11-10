@@ -1701,3 +1701,24 @@ input::placeholder {
   right: 6px;
   font-size: 12px;
 }
+
+/* Upuszczanie plików na Notatkę (Załączniki) */
+.note.dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: -10px;
+  background: var(--accent-softer);
+}
+.drop-hint {
+  position: sticky;
+  top: 12px;
+  z-index: 5;
+  width: fit-content;
+  margin: 0 auto 8px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 13px;
+  pointer-events: none;
+  box-shadow: var(--shadow, 0 4px 14px rgba(0, 0, 0, 0.15));
+}

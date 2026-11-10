@@ -7,12 +7,15 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { autocompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
 import type { Summary } from "../lib/api";
+import { filesOf } from "../lib/attach";
 
 type Props = {
   value: string;
   summary: Summary | null;
   onChange: (value: string) => void;
   onSave: () => void;
+  /** Wklejone albo upuszczone pliki: zapisuje je jako Załączniki i zwraca Markdown do wstawienia. */
+  onFiles?: (files: File[], pasted: boolean) => Promise<string>;
 };
 
 function norm(s: string): string {
@@ -92,12 +95,23 @@ const highlight = HighlightStyle.define([
   { tag: t.comment, color: "var(--faint)", fontStyle: "italic" },
 ]);
 
-export function Editor({ value, summary, onChange, onSave }: Props) {
+/** Wstawia Markdown Załączników w `pos`, w osobnych liniach. */
+function insertBlock(v: EditorView, pos: number, md: string) {
+  if (!md) return;
+  const line = v.state.doc.lineAt(pos);
+  const before = pos > line.from ? "\n" : "";
+  const after = pos < line.to ? "\n" : "";
+  const text = before + md + after;
+  v.dispatch({ changes: { from: pos, insert: text }, selection: { anchor: pos + text.length } });
+  v.focus();
+}
+
+export function Editor({ value, summary, onChange, onSave, onFiles }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   // Aktualne wartości dla rozszerzeń utworzonych raz.
-  const latest = useRef({ summary, onChange, onSave });
-  latest.current = { summary, onChange, onSave };
+  const latest = useRef({ summary, onChange, onSave, onFiles });
+  latest.current = { summary, onChange, onSave, onFiles };
 
   useEffect(() => {
     const v = new EditorView({
@@ -108,7 +122,7 @@ export function Editor({ value, summary, onChange, onSave }: Props) {
           basicSetup,
           markdown(),
           EditorView.lineWrapping,
-          placeholder("Pisz w Markdownie. [[ wstawia Link do Notatki, # dodaje Tag."),
+          placeholder("Pisz w Markdownie. [[ wstawia Link do Notatki, # dodaje Tag. Zrzut ekranu wklej Ctrl+V, pliki przeciągnij."),
           autocompletion({ override: [completions(() => latest.current.summary)], activateOnTyping: true }),
           keymap.of([
             {
@@ -120,6 +134,32 @@ export function Editor({ value, summary, onChange, onSave }: Props) {
               },
             },
           ]),
+          EditorView.domEventHandlers({
+            paste: (e, v) => {
+              const files = filesOf(e.clipboardData);
+              const handler = latest.current.onFiles;
+              if (!files.length || !handler) return false;
+              e.preventDefault();
+              const pos = v.state.selection.main.head;
+              void handler(files, true).then((md) => insertBlock(v, pos, md));
+              return true;
+            },
+            dragover: (e) => {
+              if (!e.dataTransfer?.types.includes("Files")) return false;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+              return true;
+            },
+            drop: (e, v) => {
+              const files = filesOf(e.dataTransfer);
+              const handler = latest.current.onFiles;
+              if (!files.length || !handler) return false;
+              e.preventDefault();
+              const pos = v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.selection.main.head;
+              void handler(files, false).then((md) => insertBlock(v, pos, md));
+              return true;
+            },
+          }),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) latest.current.onChange(u.state.doc.toString());
           }),

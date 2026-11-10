@@ -6,6 +6,13 @@ import { applyStoredTheme } from "./lib/theme";
 
 applyStoredTheme();
 
+// Plik upuszczony poza Notatką nie może otworzyć się w oknie zamiast aplikacji.
+for (const type of ["dragover", "drop"] as const) {
+  window.addEventListener(type, (e) => {
+    if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+  });
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />

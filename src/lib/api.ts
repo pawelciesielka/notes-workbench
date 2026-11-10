@@ -19,6 +19,14 @@ export type TreeNode = {
   children: TreeNode[];
 };
 
+export type Attachment = {
+  /** Nazwa pliku w `<Notatka>.assets`. */
+  name: string;
+  /** Adres względem katalogu Notatki, gotowy do Markdownu. */
+  link: string;
+  image: boolean;
+};
+
 export type NoteData = {
   path: string;
   title: string;
@@ -125,6 +133,14 @@ export const api = {
   resolveLink: (from: string, target: string) => invoke<string | null>("resolve_link", { from, target }),
   tagNotes: (tag: string) => invoke<NoteRef[]>("tag_notes", { tag }),
   graph: () => invoke<Graph>("graph"),
+  /** Zapisuje plik jako Załącznik Notatki; treść idzie surowo, bez JSON. */
+  addAttachment: async (note: string, name: string, data: Blob): Promise<Attachment> => {
+    const bytes = new Uint8Array(await data.arrayBuffer());
+    if (!inTauri && import.meta.env.DEV) return invoke<Attachment>("add_attachment", { note, name, size: bytes.length });
+    return tauriInvoke<Attachment>("add_attachment", bytes, {
+      headers: { "x-note": encodeURIComponent(note), "x-name": encodeURIComponent(name) },
+    });
+  },
   saveNote: (path: string, body: string, expected: string) => invoke<NoteData>("save_note", { path, body, expected }),
   setNoai: (path: string, on: boolean) => invoke<NoteData>("set_noai", { path, on }),
   setTitle: (path: string, title: string) => invoke<NoteData>("set_note_title", { path, title }),
@@ -154,6 +170,8 @@ export const api = {
 
 /** Adres pliku Skarbca do wyświetlenia w widoku (obraz, PDF). */
 export function vaultUrl(relPath: string): string {
+  // Podgląd poza Tauri: brak protokołu vault://, obraz po prostu się nie wczyta.
+  if (!inTauri) return `vault-preview/${relPath}`;
   return convertFileSrc(relPath, "vault");
 }
 
