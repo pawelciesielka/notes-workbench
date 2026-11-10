@@ -153,6 +153,27 @@ export const CollapseIcon = (p: P) => (
     <path d="m7 10 5-5 5 5M7 19l5-5 5 5" />
   </Svg>
 );
+/** Sortowanie po nazwie: litery A–Z obok strzałki w dół. */
+export const SortNameIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M7 5v14M4 16l3 3 3-3" />
+    <path d="M13.5 11 16 5l2.5 6M14.2 9.3h3.6M13.5 14h5l-5 5h5" />
+  </Svg>
+);
+/** Sortowanie po dacie: zegar obok strzałki w dół. */
+export const SortDateIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M7 5v14M4 16l3 3 3-3" />
+    <circle cx="16.5" cy="12" r="4.5" />
+    <path d="M16.5 9.5V12l1.6 1.2" />
+  </Svg>
+);
+/** Ręczna Kolejność: trzy poziome kreski. */
+export const SortOrderIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M5 7h14M5 12h14M5 17h14" />
+  </Svg>
+);
 export const LinkIcon = (p: P) => (
   <Svg {...p}>
     <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />

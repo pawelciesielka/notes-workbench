@@ -12,6 +12,8 @@ import { ProposalsView } from "./components/ProposalsView";
 import { McpView } from "./components/McpView";
 import { useTheme, type ThemeMode } from "./lib/theme";
 import { ContextMenu, FolderPicker, PromptDialog, type MenuItem } from "./components/Menu";
+import { sortItems } from "./components/Tree";
+import { SORT_LABELS, useTreeSort } from "./lib/treeSort";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
   CheckIcon,
@@ -160,6 +162,7 @@ export default function App() {
 
   // ===== Menu kontekstowe drzewa =====
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const treeSort = useTreeSort();
   const [dialog, setDialog] = useState<ReactNode>(null);
   const [info, setInfo] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -435,8 +438,20 @@ export default function App() {
   ];
 
   const onTreeMenu = (n: TreeNode | null, x: number, y: number) => {
-    const items =
+    let items =
       side === "trash" ? (n ? trashMenu(n) : []) : !n ? rootMenu() : n.kind === "folder" ? folderMenu(n) : noteMenu(n);
+    if (side !== "trash" && (!n || n.kind === "folder")) {
+      const folder = n ? n.path : "";
+      const mode = treeSort.sort[folder] ?? "order";
+      items = [
+        ...items,
+        { separator: true },
+        {
+          label: `Sortowanie: ${SORT_LABELS[mode]}…`,
+          onClick: () => setMenu({ x, y, items: sortItems(mode, (m) => treeSort.setSort(folder, m)) }),
+        },
+      ];
+    }
     if (items.length) setMenu({ x, y, items });
   };
 
@@ -597,6 +612,8 @@ export default function App() {
             noai={noaiSet}
             onOpen={openNote}
             onMenu={onTreeMenu}
+            sort={side === "trash" ? undefined : treeSort.sort}
+            onSort={side === "trash" ? undefined : treeSort.setSort}
           />
         )}
         {report && (

@@ -1947,3 +1947,32 @@ input::placeholder {
 .split.dragging .split-pane {
   pointer-events: none;
 }
+
+/* Przycisk sortowania Folderu: widoczny po najechaniu, stale gdy Folder ma inne niż ręczne sortowanie. */
+.tree-sort {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+  visibility: hidden;
+}
+.tree-row:hover .tree-sort,
+.tree-row.focused .tree-sort,
+.tree-sort.on {
+  visibility: visible;
+}
+.tree-sort.on {
+  color: var(--accent);
+}
+.tree-sort:hover {
+  color: var(--fg);
+  background: var(--press);
+}

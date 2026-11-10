@@ -1,6 +1,39 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { TreeNode } from "../lib/api";
-import { ChevronRight, CollapseIcon, FileIcon, FolderIcon, FolderOpenIcon, LockIcon, SearchIcon, XIcon } from "./Icons";
+import { SORT_LABELS, sortTree, type SortMap, type SortMode } from "../lib/treeSort";
+import {
+  CheckIcon,
+  ChevronRight,
+  CollapseIcon,
+  FileIcon,
+  FolderIcon,
+  FolderOpenIcon,
+  LockIcon,
+  SearchIcon,
+  SortDateIcon,
+  SortNameIcon,
+  SortOrderIcon,
+  XIcon,
+} from "./Icons";
+import { ContextMenu, type MenuItem } from "./Menu";
+
+const SORT_ICONS: Record<SortMode, (p: { size?: number }) => JSX.Element> = {
+  order: SortOrderIcon,
+  name: SortNameIcon,
+  date: SortDateIcon,
+};
+
+/** Pozycje menu wyboru sortowania Folderu (wspólne dla przycisku w drzewie i menu kontekstowego). */
+export function sortItems(current: SortMode, pick: (m: SortMode) => void): MenuItem[] {
+  return (Object.keys(SORT_LABELS) as SortMode[]).map((m) => {
+    const Icon = SORT_ICONS[m];
+    return {
+      label: SORT_LABELS[m],
+      icon: m === current ? <CheckIcon size={15} /> : <Icon size={15} />,
+      onClick: () => pick(m),
+    };
+  });
+}
 
 function norm(s: string): string {
   return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -81,9 +114,18 @@ type Props = {
   onOpen: (notePath: string) => void;
   /** Prawy przycisk (albo klawisz Menu) na węźle; `null` to puste miejsce drzewa. */
   onMenu?: (node: TreeNode | null, x: number, y: number) => void;
+  /** Sortowanie Folderów (ścieżka → sposób; `""` to korzeń). Bez niego drzewo zostaje w Kolejności. */
+  sort?: SortMap;
+  onSort?: (folder: string, mode: SortMode) => void;
 };
 
-export function Tree({ nodes, selected, noai, onOpen, onMenu }: Props) {
+export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort }: Props) {
+  const [sortMenu, setSortMenu] = useState<{ folder: string; x: number; y: number } | null>(null);
+  const modeOf = (folder: string): SortMode => sort?.[folder] ?? "order";
+  const openSortMenu = (folder: string, el: HTMLElement) => {
+    const b = el.getBoundingClientRect();
+    setSortMenu({ folder, x: b.left, y: b.bottom + 2 });
+  };
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<string | null>(null);
@@ -103,11 +145,12 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu }: Props) {
     }
   };
   const visible = useMemo(() => {
-    if (!filtering) return nodes;
+    const sorted = sort ? sortTree(nodes, sort) : nodes;
+    if (!filtering) return sorted;
     const match: Match = (n) =>
       (q === "" || norm(n.title).includes(q)) && (since === 0 || (n.modified !== null && n.modified >= since));
-    return filterTree(nodes, match);
-  }, [nodes, q, since, filtering]);
+    return filterTree(sorted, match);
+  }, [nodes, sort, q, since, filtering]);
   const matched = useMemo(() => (since > 0 ? countNotes(visible, since) : 0), [visible, since]);
   const counts = useMemo(() => {
     const m = new Map<string, number>();
@@ -224,8 +267,11 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu }: Props) {
     e.preventDefault();
   };
 
-  const render = (list: TreeNode[], depth: number) =>
+  const render = (list: TreeNode[], depth: number, parent: string) =>
     list.map((n) => {
+      const byDate = modeOf(parent) === "date";
+      const mode = isFolderNode(n) ? modeOf(n.path) : "order";
+      const SortIcon = SORT_ICONS[mode];
       const isFolder = n.kind === "folder";
       const isOpen = isFolder && (filtering || expanded.has(n.path));
       const locked = !!noai && (noai.has(n.path) || (n.folder_note !== null && noai.has(n.folder_note)));
@@ -276,16 +322,29 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu }: Props) {
                 <LockIcon size={12} />
               </span>
             )}
-            {since > 0 && !isFolder && n.modified !== null && (
+            {(since > 0 || byDate) && !isFolder && n.modified !== null && (
               <span className="tree-age" title={new Date(n.modified).toLocaleString("pl-PL")}>
                 {ago(n.modified, Date.now())}
               </span>
+            )}
+            {isFolder && onSort && (
+              <button
+                className={`tree-sort${mode !== "order" ? " on" : ""}`}
+                title={`Sortowanie: ${SORT_LABELS[mode]}`}
+                aria-label={`Sortowanie Folderu „${n.title}”: ${SORT_LABELS[mode]}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openSortMenu(n.path, e.currentTarget);
+                }}
+              >
+                <SortIcon size={13} />
+              </button>
             )}
             {isFolder && <span className="tree-count">{counts.get(n.path) ?? 0}</span>}
           </div>
           {isOpen && n.children.length > 0 && (
             <div className="tree-children" role="group">
-              {render(n.children, depth + 1)}
+              {render(n.children, depth + 1, n.path)}
             </div>
           )}
         </div>
@@ -312,6 +371,20 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu }: Props) {
         >
           <CollapseIcon size={15} />
         </button>
+        {onSort &&
+          (() => {
+            const RootIcon = SORT_ICONS[modeOf("")];
+            return (
+              <button
+                className={`icon-btn${modeOf("") !== "order" ? " on" : ""}`}
+                title={`Sortowanie głównego poziomu: ${SORT_LABELS[modeOf("")]}`}
+                aria-label="Sortowanie głównego poziomu"
+                onClick={(e) => openSortMenu("", e.currentTarget)}
+              >
+                <RootIcon size={15} />
+              </button>
+            );
+          })()}
       </div>
       <div className={`tree-age-filter${age > 0 ? " on" : ""}`}>
         <div className="tree-age-head">
@@ -358,9 +431,21 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu }: Props) {
         {visible.length === 0 ? (
           <div className="muted pad">{filtering ? "Brak pasujących Notatek" : "Pusto"}</div>
         ) : (
-          render(visible, 0)
+          render(visible, 0, "")
         )}
       </div>
+      {sortMenu && onSort && (
+        <ContextMenu
+          x={sortMenu.x}
+          y={sortMenu.y}
+          items={sortItems(modeOf(sortMenu.folder), (m) => onSort(sortMenu.folder, m))}
+          onClose={() => setSortMenu(null)}
+        />
+      )}
     </div>
   );
+}
+
+function isFolderNode(n: TreeNode): boolean {
+  return n.kind === "folder";
 }
