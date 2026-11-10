@@ -1368,30 +1368,141 @@ input::placeholder {
   padding: 12px 14px;
   margin-bottom: 10px;
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 4px 14px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: start;
   background: var(--surface);
   box-shadow: var(--shadow);
 }
+.proposals li.chosen {
+  border-color: var(--accent);
+  background: var(--accent-softer);
+}
+.proposals li.failed {
+  border-color: var(--bad-fg);
+}
+.proposal-check {
+  margin-top: 3px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.proposal-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .proposal-what {
-  grid-column: 1;
   font-weight: 600;
 }
 .proposal-reason {
-  grid-column: 1;
   color: var(--fg-2);
   line-height: 1.5;
 }
 .proposal-meta {
-  grid-column: 1;
   color: var(--faint);
 }
 .proposal-actions {
-  grid-column: 2;
-  grid-row: 1 / span 3;
   display: flex;
   gap: 6px;
   align-items: center;
+}
+.proposal-bulk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.proposal-check-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+.proposal-check-all input {
+  accent-color: var(--accent);
+}
+.proposal-info {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.proposal-error {
+  font-size: 13px;
+  color: var(--bad-fg);
+  background: var(--bad-bg);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+.proposal-text {
+  margin-top: 4px;
+}
+.proposal-text-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.diff-stat.add {
+  color: var(--ok-fg);
+}
+.diff-stat.del {
+  color: var(--bad-fg);
+}
+.small-btn {
+  font-size: 12px;
+  padding: 2px 8px;
+}
+.diff {
+  margin: 0;
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 4px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.diff > div {
+  padding: 0 10px 0 4px;
+}
+.diff-sign {
+  display: inline-block;
+  width: 16px;
+  color: var(--faint);
+  user-select: none;
+}
+.diff-add {
+  background: var(--ok-bg);
+}
+.diff-add .diff-sign {
+  color: var(--ok-fg);
+}
+.diff-del {
+  background: var(--bad-bg);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--bad-fg) 45%, transparent);
+}
+.diff-del .diff-sign {
+  color: var(--bad-fg);
+}
+.diff-skip {
+  color: var(--faint);
+  font-style: italic;
+  font-family: var(--font, inherit);
 }
 .proposal-kind {
   font-size: 11px;
@@ -1405,6 +1516,14 @@ input::placeholder {
 .proposal-kind.tag-kind {
   color: var(--tag);
   background: var(--tag-bg);
+}
+.proposal-kind.note-kind {
+  color: var(--ok-fg);
+  background: var(--ok-bg);
+}
+.proposal-kind.edit-kind {
+  color: var(--fg);
+  background: var(--mark);
 }
 .tag-name {
   color: var(--tag);

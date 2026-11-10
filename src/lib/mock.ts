@@ -105,7 +105,21 @@ const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
       id: 2, kind: "tag", note: "Przykłady/Router.md", tag: "sieć", reason: "Notatka o sieci domowej.",
       source: "Claude (MCP)", created: "2026-11-09 22:17", status: "pending", note_title: "Router domowy", target_title: null,
     },
+    {
+      id: 3, kind: "note", note: "Przykłady", title: "Mapa przykładów", body: "# Mapa przykładów\n\nZbiorcza Notatka z Linkami:\n\n- [[Router domowy]]\n- [[graphite]]\n\n#przyklady",
+      reason: "Brakuje Notatki, która łączy przykłady.", source: "Claude (MCP)", created: "2026-11-10 12:01",
+      status: "pending", note_title: "Przykłady", target_title: null,
+    },
+    {
+      id: 4, kind: "edit", note: "Przykłady/Router.md",
+      base: "Konfiguracja routera.\n\nSerwer: router.example.com\nPort: 1194\n\nUwagi: brak",
+      body: "Konfiguracja routera.\n\nSerwer: router.example.com\nPort: 443 (TCP)\n\nUwagi: od 2025 port 443.\nZobacz też [[systemd]].",
+      reason: "Port zmieniony na 443 według nowszej Notatki.", source: "Claude (MCP)", created: "2026-11-10 12:02",
+      status: "pending", note_title: "Router domowy", target_title: null,
+    },
   ],
+  accept_proposals: (a) => ({ done: (a.ids as number[]).length - 1, created: [], failed: [[(a.ids as number[])[0], "Notatka „Router domowy” zmieniła się od czasu Propozycji, więc jej nie nadpisuję."]] }),
+  reject_proposals: () => null,
   read_note: (a) => ({
     path: a.path,
     title: notes.find((n) => n.path === a.path)?.title ?? String(a.path).split("/").pop()?.replace(/\.md$/, ""),

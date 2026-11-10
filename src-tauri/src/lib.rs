@@ -337,17 +337,35 @@ fn list_proposals(state: State<AppState>) -> Result<Vec<ProposalView>, String> {
     })?
 }
 
-/// Akceptuje Propozycje (zapis we frontmatterze Notatek); zwraca liczbę zaakceptowanych.
+#[derive(Serialize)]
+struct AcceptResult {
+    done: usize,
+    /// Notatki utworzone z Propozycji (drzewo do odświeżenia).
+    created: Vec<String>,
+    /// Propozycje, których nie dało się zastosować (np. Notatka zmieniona od czasu Propozycji): id i powód.
+    failed: Vec<(u64, String)>,
+}
+
+/// Akceptuje Propozycje (zapis w Notatkach). Błąd jednej nie zatrzymuje pozostałych.
 #[tauri::command]
-fn accept_proposals(state: State<AppState>, ids: Vec<u64>) -> Result<usize, String> {
+fn accept_proposals(state: State<AppState>, ids: Vec<u64>) -> Result<AcceptResult, String> {
     let vault = state.vault()?;
-    let mut done = 0;
+    let before: std::collections::HashSet<u64> =
+        proposals::pending(&vault)?.into_iter().filter(|p| p.kind == proposals::Kind::Note).map(|p| p.id).collect();
+    let mut res = AcceptResult { done: 0, created: Vec::new(), failed: Vec::new() };
     for id in ids {
-        let note = state.with_index(|idx, _| proposals::accept(&vault, idx, id))??;
-        state.changed(None, Some(&note))?;
-        done += 1;
+        match state.with_index(|idx, _| proposals::accept(&vault, idx, id)).and_then(|r| r) {
+            Ok(note) => {
+                state.changed(None, Some(&note))?;
+                if before.contains(&id) {
+                    res.created.push(note);
+                }
+                res.done += 1;
+            }
+            Err(e) => res.failed.push((id, e)),
+        }
     }
-    Ok(done)
+    Ok(res)
 }
 
 #[tauri::command]
@@ -536,6 +554,13 @@ pub fn run() {
                         *app.state::<AppState>().settings.lock().unwrap() = s;
                     }
                 }
+            }
+            // Serwer MCP podłączony wcześniej: po aktualizacji aplikacji kopia serwera dostaje nową wersję
+            // (gdy Claude akurat go używa, kopia zostaje i odświeży się przy następnym uruchomieniu).
+            if mcp_setup::server_path().exists() {
+                std::thread::spawn(|| {
+                    let _ = mcp_setup::install_server();
+                });
             }
             Ok(())
         })

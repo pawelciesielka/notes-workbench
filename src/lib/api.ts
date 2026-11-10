@@ -107,10 +107,17 @@ export type OpResult = { path: string; fixed: number };
 
 export type Proposal = {
   id: number;
-  kind: "relation" | "tag";
+  /** relation, tag: wpis we frontmatterze; note: nowa Notatka (`note` to Folder); edit: nowa treść Notatki. */
+  kind: "relation" | "tag" | "note" | "edit";
   note: string;
   target?: string;
   tag?: string;
+  /** Tytuł nowej Notatki. */
+  title?: string;
+  /** Proponowana treść (nowa Notatka, zmiana). */
+  body?: string;
+  /** Treść Notatki w chwili Propozycji zmiany. */
+  base?: string;
   reason: string;
   source: string;
   created: string;
@@ -119,9 +126,17 @@ export type Proposal = {
   target_title: string | null;
 };
 
+export type AcceptResult = {
+  done: number;
+  /** Notatki utworzone z Propozycji. */
+  created: string[];
+  /** Propozycje, których nie dało się zastosować: [id, powód]. */
+  failed: [number, string][];
+};
+
 export const api = {
   proposals: () => invoke<Proposal[]>("list_proposals"),
-  acceptProposals: (ids: number[]) => invoke<number>("accept_proposals", { ids }),
+  acceptProposals: (ids: number[]) => invoke<AcceptResult>("accept_proposals", { ids }),
   rejectProposals: (ids: number[]) => invoke<void>("reject_proposals", { ids }),
   semanticStatus: () => invoke<SemanticInfo>("semantic_status"),
   semanticEnable: () => invoke<void>("semantic_enable"),

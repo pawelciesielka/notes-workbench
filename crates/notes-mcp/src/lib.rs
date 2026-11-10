@@ -139,6 +139,27 @@ impl Server {
         }
     }
 
+    /// Folder dla nowej Notatki; Foldery ukryte przed AI (Notatka folderu z #noai, także wyżej) są jak nieistniejące.
+    fn find_folder(&self, vault: &Path, arg: &str) -> Result<String, String> {
+        let f = arg.trim().replace('\\', "/");
+        let f = f.trim_matches('/').to_string();
+        let not_found = || format!("Nie ma Folderu „{arg}”. Użyj list_notes, żeby znaleźć Folder.");
+        if f.is_empty() {
+            return Ok(f);
+        }
+        if hidden(&format!("{f}/")) || !vault.join(&f).is_dir() {
+            return Err(not_found());
+        }
+        let parts: Vec<&str> = f.split('/').collect();
+        for i in 1..=parts.len() {
+            let dir = parts[..i].join("/");
+            if self.noai.contains(&format!("{dir}/{}.md", parts[i - 1])) {
+                return Err(not_found());
+            }
+        }
+        Ok(f)
+    }
+
     fn call(&mut self, name: &str, args: &Value) -> Result<String, String> {
         let vault = self.sync()?;
         let s = |k: &str| args.get(k).and_then(Value::as_str).unwrap_or("").to_string();
@@ -413,6 +434,36 @@ impl Server {
                     "Dodano {added}, pominięto {skipped}.\n{out}\nPropozycje czekają na akceptację użytkownika w aplikacji Notes Workbench (widok Propozycje); dopiero wtedy trafiają do Notatek.",
                 ))
             }
+            "propose_note" | "propose_edit" => {
+                let reason = s("reason");
+                let (label, r) = if name == "propose_note" {
+                    let folder = self.find_folder(&vault, &s("folder"))?;
+                    let title = s("title");
+                    let where_ = if folder.is_empty() { "główny poziom Skarbca".to_string() } else { format!("Folder {folder}") };
+                    (format!("nowa Notatka „{}” ({where_})", title.trim()), proposals::add_note(&vault, &folder, &title, &s("body"), &reason, SOURCE)?)
+                } else {
+                    let path = self.find_note(&s("path"))?;
+                    let current = vault::read_note(&vault, &path)?.body;
+                    let body = match (args.get("body").and_then(Value::as_str), args.get("append").and_then(Value::as_str)) {
+                        (Some(b), None) => b.to_string(),
+                        (None, Some(a)) => format!("{}\n\n{}\n", current.trim_end(), a.trim()),
+                        _ => return Err("Podaj dokładnie jedno: body (cała nowa treść) albo append (tekst dopisany na końcu).".into()),
+                    };
+                    let t = self.idx().title(&path).unwrap_or(path.clone());
+                    (format!("zmiana Notatki „{t}” ({path})"), proposals::add_edit(&vault, &path, &body, &reason, SOURCE)?)
+                };
+                Ok(match r {
+                    proposals::Added::Added(id) => format!(
+                        "{label}: dodano (id {id}). Czeka na akceptację użytkownika w aplikacji Notes Workbench (widok Propozycje); \
+do tego czasu {}.",
+                        if name == "propose_note" { "Notatka nie istnieje" } else { "treść Notatki się nie zmienia" }
+                    ),
+                    proposals::Added::AlreadyPending => format!("{label}: pominięto, taka Propozycja już czeka na decyzję."),
+                    proposals::Added::RejectedBefore => format!("{label}: pominięto, użytkownik wcześniej to odrzucił; nie proponuj ponownie."),
+                    proposals::Added::AlreadyLinked => format!("{label}: pominięto."),
+                    proposals::Added::NotFound(e) | proposals::Added::Invalid(e) => return Err(e),
+                })
+            }
             "list_proposals" => {
                 let status = args.get("status").and_then(Value::as_str).unwrap_or("pending");
                 let filter = match args.get("path").and_then(Value::as_str) {
@@ -429,6 +480,7 @@ impl Server {
                     })
                     // Propozycje dotyczące Notatek ukrytych przed AI też są ukryte.
                     .filter(|p| !self.noai.contains(&p.note) && p.target.as_ref().is_none_or(|t| !self.noai.contains(t)))
+                    .filter(|p| p.kind != proposals::Kind::Note || self.find_folder(&vault, &p.note).is_ok())
                     .filter(|p| filter.as_ref().is_none_or(|f| &p.note == f || p.target.as_ref() == Some(f)))
                     .collect();
                 if shown.is_empty() {
@@ -440,6 +492,12 @@ impl Server {
                     let what = match p.kind {
                         proposals::Kind::Relation => format!("{} ↔ {}", t(&p.note), t(p.target.as_deref().unwrap_or(""))),
                         proposals::Kind::Tag => format!("#{} → {}", p.tag.as_deref().unwrap_or(""), t(&p.note)),
+                        proposals::Kind::Note => format!(
+                            "nowa Notatka „{}” w {}",
+                            p.title.as_deref().unwrap_or(""),
+                            if p.note.is_empty() { "głównym poziomie" } else { p.note.as_str() }
+                        ),
+                        proposals::Kind::Edit => format!("zmiana treści „{}”", t(&p.note)),
                     };
                     let st = if p.status == proposals::Status::Rejected { " [odrzucona]" } else { "" };
                     out += &format!("- id {}: {what}{st} — {}\n", p.id, p.reason);
@@ -568,6 +626,45 @@ Proposals wait for the user's acceptance in the app; accepted tags go to `tags:`
             "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false }
         },
         {
+            "name": "propose_note",
+            "title": "Zaproponuj nową Notatkę",
+            "description": "Propose a NEW note (e.g. a summary, a hub note linking related notes, a missing topic). \
+Nothing is created until the user accepts it in the Notes Workbench app (view Propozycje), where they see the full text. \
+'folder' is an existing folder path from list_notes (empty = top level). 'body' is Markdown without frontmatter; \
+you may use [[Note title]] links and #tags. Write in Polish unless the user asks otherwise. 'reason': one sentence in Polish.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "folder": { "type": "string", "description": "Existing folder path, '' for top level" },
+                    "title": { "type": "string" },
+                    "body": { "type": "string", "description": "Markdown body (no frontmatter)" },
+                    "reason": { "type": "string", "description": "Why this note is useful, one sentence in Polish" }
+                },
+                "required": ["folder", "title", "body", "reason"]
+            },
+            "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false }
+        },
+        {
+            "name": "propose_edit",
+            "title": "Zaproponuj zmianę Notatki",
+            "description": "Propose a change to an existing note's text. Give EITHER 'body' (the complete new Markdown body, \
+frontmatter is kept as is) OR 'append' (text added at the end). Always read_note first and keep everything you are not \
+deliberately changing. The user reviews a line diff and accepts or rejects it in the app; if the note changes in the \
+meantime the proposal cannot be applied. A newer edit proposal for the same note replaces the older pending one. \
+'reason': one sentence in Polish describing the change.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string" },
+                    "body": { "type": "string", "description": "Complete new body (Markdown, no frontmatter)" },
+                    "append": { "type": "string", "description": "Text to add at the end instead of 'body'" },
+                    "reason": { "type": "string" }
+                },
+                "required": ["path", "reason"]
+            },
+            "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false }
+        },
+        {
             "name": "list_proposals",
             "title": "Propozycje",
             "description": "List proposals in the queue: 'pending' (default, waiting for the user), 'rejected' (do not propose again) or 'all'. \
@@ -607,8 +704,9 @@ fn handle(srv: &mut Server, msg: &Value) -> Option<Value> {
                 "protocolVersion": version,
                 "capabilities": { "tools": { "listChanged": false } },
                 "serverInfo": { "name": "notes-workbench", "title": "Notes Workbench", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": "Access to the user's personal knowledge base. Notes themselves are read-only; you can propose \
-relations and tags (propose_relations, propose_tags), which the user accepts or rejects in the Notes Workbench app. \
+                "instructions": "Access to the user's personal knowledge base. You never change notes directly: you can propose \
+relations, tags, new notes and text edits (propose_relations, propose_tags, propose_note, propose_edit), which the user \
+accepts or rejects in the Notes Workbench app. \
 Personal knowledge base (Markdown notes, mostly in Polish). \
 Start with search_notes, then read_note for full text. Notes link to each other with [[links]] and #tags; \
 use note_links to follow the knowledge graph. Cite note titles when you use their content. \

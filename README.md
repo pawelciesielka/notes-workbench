@@ -14,6 +14,10 @@ Etap 4: serwer MCP tylko do odczytu (`crates/notes-mcp`) dla Claude: `search_not
 są dla serwera niewidoczne.
 Etap 5: Claude przez MCP proponuje powiązania i Tagi (`propose_relations`, `propose_tags`, `list_proposals`);
 czekają w `.notes-workbench/propozycje.json` na decyzję w widoku „Propozycje” aplikacji (ADR 0002).
+Etap 6: tą samą drogą Claude proponuje nowe Notatki (`propose_note`) i zmiany treści (`propose_edit`: cała treść
+albo dopisek na końcu). W widoku „Propozycje” widać treść nowej Notatki i różnice zmian; można zaznaczyć wiele
+Propozycji i zaakceptować je naraz. Zmiana Notatki, która od czasu Propozycji zmieniła się na dysku, nie jest
+zapisywana (konflikt), a pozostałe zaznaczone Propozycje przechodzą dalej.
 
 Załączniki: zrzut ekranu wklejony Ctrl+V albo pliki przeciągnięte na Notatkę trafiają do `<Notatka>.assets/`.
 W edytorze Link wstawia się w miejscu kursora (albo upuszczenia), w podglądzie na końcu Notatki.

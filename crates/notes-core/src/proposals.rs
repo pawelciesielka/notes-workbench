@@ -4,6 +4,8 @@
 //! odrzucenia, są częścią jego danych: odrzucona Propozycja nie wraca, także po przeinstalowaniu
 //! aplikacji. Zaakceptowana znika z kolejki i trafia do frontmattera Notatki (ADR 0002):
 //! powiązanie jako `powiazane: ["[[…]]"]`, Tag jako `tags: [...]`.
+//! Nowa Notatka i zmiana treści Notatki też czekają tu na akceptację; zmiana treści zapamiętuje treść,
+//! od której wyszła, i nie nadpisze Notatki zmienionej w międzyczasie.
 
 use crate::index::{self, Index};
 use crate::vault::{self, APP_DIR};
@@ -16,6 +18,10 @@ use std::path::{Path, PathBuf};
 pub enum Kind {
     Relation,
     Tag,
+    /// Nowa Notatka: `note` to Folder, `title` i `body` jej treść.
+    Note,
+    /// Nowa treść istniejącej Notatki (frontmatter zostaje): `body`, a `base` to treść w chwili Propozycji.
+    Edit,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -37,6 +43,15 @@ pub struct Proposal {
     /// Dla Tagu: nazwa bez `#`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
+    /// Dla nowej Notatki: tytuł.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Dla nowej Notatki i zmiany: proponowana treść (Markdown, bez frontmattera).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+    /// Dla zmiany: treść Notatki, od której wyszła Propozycja (do porównania i wykrycia konfliktu).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
     pub reason: String,
     /// Kto zaproponował (np. „Claude (MCP)”).
     pub source: String,
@@ -124,6 +139,9 @@ pub fn add_relation(vault: &Path, idx: &Index, from: &str, to: &str, reason: &st
         note: from.to_string(),
         target: Some(to.to_string()),
         tag: None,
+        title: None,
+        body: None,
+        base: None,
         reason: reason.trim().to_string(),
         source: source.to_string(),
         created: now(),
@@ -163,6 +181,9 @@ pub fn add_tag(vault: &Path, idx: &Index, note: &str, tag: &str, reason: &str, s
         note: note.to_string(),
         target: None,
         tag: Some(t),
+        title: None,
+        body: None,
+        base: None,
         reason: reason.trim().to_string(),
         source: source.to_string(),
         created: now(),
@@ -172,7 +193,85 @@ pub fn add_tag(vault: &Path, idx: &Index, note: &str, tag: &str, reason: &str, s
     Ok(Added::Added(id))
 }
 
-/// Akceptuje: zapisuje we frontmatterze Notatki i usuwa z kolejki. Zwraca zmienioną Notatkę.
+/// Największa proponowana treść (znaki), żeby kolejka nie puchła.
+pub const MAX_BODY: usize = 200_000;
+
+fn push(vault: &Path, mut p: Proposal) -> Result<Added, String> {
+    let mut f = load(vault)?;
+    f.next_id += 1;
+    p.id = f.next_id;
+    let id = p.id;
+    f.proposals.push(p);
+    save(vault, &f)?;
+    Ok(Added::Added(id))
+}
+
+fn text_proposal(kind: Kind, note: &str, title: Option<String>, body: &str, base: Option<String>, reason: &str, source: &str) -> Proposal {
+    Proposal {
+        id: 0,
+        kind,
+        note: note.to_string(),
+        target: None,
+        tag: None,
+        title,
+        body: Some(body.to_string()),
+        base,
+        reason: reason.trim().to_string(),
+        source: source.to_string(),
+        created: now(),
+        status: Status::Pending,
+    }
+}
+
+/// Dodaje Propozycję nowej Notatki w Folderze `folder` (pusty: główny poziom Skarbca).
+pub fn add_note(vault: &Path, folder: &str, title: &str, body: &str, reason: &str, source: &str) -> Result<Added, String> {
+    let folder = folder.trim().trim_matches('/');
+    if title.trim().is_empty() {
+        return Ok(Added::Invalid("Podaj tytuł (title).".into()));
+    }
+    if reason.trim().is_empty() {
+        return Ok(Added::Invalid("Podaj uzasadnienie (reason).".into()));
+    }
+    if body.chars().count() > MAX_BODY {
+        return Ok(Added::Invalid(format!("Treść jest za długa (najwyżej {MAX_BODY} znaków).")));
+    }
+    let bad = folder.split('/').any(|s| s.is_empty() || s.starts_with('.') || s.ends_with(".assets"));
+    if !folder.is_empty() && (bad || !vault.join(folder).is_dir()) {
+        return Ok(Added::NotFound(format!("Nie ma Folderu „{folder}”. Użyj list_notes, żeby znaleźć Folder.")));
+    }
+    let f = load(vault)?;
+    let dup = f
+        .proposals
+        .iter()
+        .find(|p| p.kind == Kind::Note && p.note == folder && p.title.as_deref().map(str::trim) == Some(title.trim()));
+    if let Some(p) = dup {
+        return Ok(if p.status == Status::Rejected { Added::RejectedBefore } else { Added::AlreadyPending });
+    }
+    push(vault, text_proposal(Kind::Note, folder, Some(title.trim().to_string()), body, None, reason, source))
+}
+
+/// Dodaje Propozycję nowej treści Notatki `note`. Czekająca zmiana tej samej Notatki jest zastępowana nową.
+pub fn add_edit(vault: &Path, note: &str, body: &str, reason: &str, source: &str) -> Result<Added, String> {
+    if reason.trim().is_empty() {
+        return Ok(Added::Invalid("Podaj uzasadnienie (reason).".into()));
+    }
+    if body.chars().count() > MAX_BODY {
+        return Ok(Added::Invalid(format!("Treść jest za długa (najwyżej {MAX_BODY} znaków).")));
+    }
+    let current = vault::read_note(vault, note)?.body;
+    if current.trim_end() == body.trim_end() {
+        return Ok(Added::Invalid("Proponowana treść jest taka sama jak obecna.".into()));
+    }
+    let mut f = load(vault)?;
+    let before = f.proposals.len();
+    f.proposals.retain(|p| !(p.kind == Kind::Edit && p.note == note && p.status == Status::Pending));
+    if f.proposals.len() != before {
+        save(vault, &f)?;
+    }
+    push(vault, text_proposal(Kind::Edit, note, None, body, Some(current), reason, source))
+}
+
+/// Akceptuje: zapisuje w Notatce i usuwa z kolejki. Zwraca zmienioną albo utworzoną Notatkę.
 pub fn accept(vault: &Path, idx: &Index, id: u64) -> Result<String, String> {
     let mut f = load(vault)?;
     let pos = f.proposals.iter().position(|p| p.id == id && p.status == Status::Pending).ok_or("Nie ma takiej Propozycji")?;
@@ -191,6 +290,24 @@ pub fn accept(vault: &Path, idx: &Index, id: u64) -> Result<String, String> {
         }
         Kind::Tag => {
             vault::set_fm_tag(vault, &p.note, p.tag.as_deref().unwrap_or_default(), true)?;
+        }
+        Kind::Note => {
+            let path = vault::create_note(vault, &p.note, p.title.as_deref().unwrap_or_default())?;
+            let raw = vault::read_note(vault, &path)?.raw;
+            vault::save_body(vault, &path, p.body.as_deref().unwrap_or_default(), &raw)?;
+            f.proposals.remove(pos);
+            save(vault, &f)?;
+            return Ok(path);
+        }
+        Kind::Edit => {
+            let n = vault::read_note(vault, &p.note)?;
+            if Some(n.body.as_str()) != p.base.as_deref() {
+                return Err(format!(
+                    "Notatka „{}” zmieniła się od czasu Propozycji, więc jej nie nadpisuję. Odrzuć Propozycję i poproś AI o nową.",
+                    n.title
+                ));
+            }
+            vault::save_body(vault, &p.note, p.body.as_deref().unwrap_or_default(), &n.raw)?;
         }
     }
     f.proposals.remove(pos);
@@ -214,6 +331,9 @@ pub fn rename_paths(vault: &Path, moved: &std::collections::HashMap<String, Stri
     let mut f = load(vault)?;
     let mut changed = false;
     for p in &mut f.proposals {
+        if p.kind == Kind::Note {
+            continue;
+        }
         if let Some(n) = moved.get(&p.note) {
             p.note = n.clone();
             changed = true;
@@ -234,7 +354,9 @@ pub fn prune(vault: &Path, idx: &Index) -> Result<usize, String> {
     let mut f = load(vault)?;
     let before = f.proposals.len();
     f.proposals.retain(|p| {
-        p.status == Status::Rejected || (idx.title(&p.note).is_some() && p.target.as_ref().is_none_or(|t| idx.title(t).is_some()))
+        p.status == Status::Rejected
+            || p.kind == Kind::Note
+            || (idx.title(&p.note).is_some() && p.target.as_ref().is_none_or(|t| idx.title(t).is_some()))
     });
     let removed = before - f.proposals.len();
     if removed > 0 {
@@ -277,6 +399,47 @@ mod tests {
         let idx = Index::build(&dir);
         assert_eq!(add_tag(&dir, &idx, "VPN.md", "Praca", "x", "c").unwrap(), Added::RejectedBefore);
         assert_eq!(add_relation(&dir, &idx, "VPN.md", "A/Router.md", "x", "c").unwrap(), Added::AlreadyLinked);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn note_and_edit_proposals() {
+        let dir = std::env::temp_dir().join(format!("nw-prop-note-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("Projekty")).unwrap();
+        fs::write(dir.join("Projekty/VPN.md"), "---\ntitle: \"VPN\"\norder: 2\n---\n\nTunel do biura\n").unwrap();
+
+        assert!(matches!(add_note(&dir, "Brak", "X", "y", "r", "c").unwrap(), Added::NotFound(_)));
+        let Added::Added(nid) = add_note(&dir, "Projekty", "Router", "# Router\nKonfiguracja", "Brakuje opisu.", "c").unwrap() else {
+            panic!()
+        };
+        assert_eq!(add_note(&dir, "Projekty", "Router", "inna", "r", "c").unwrap(), Added::AlreadyPending);
+        let Added::Added(e1) = add_edit(&dir, "Projekty/VPN.md", "Tunel do biura\n\nPort 1194", "Port.", "c").unwrap() else {
+            panic!()
+        };
+        // Nowsza zmiana tej samej Notatki zastępuje starszą.
+        let Added::Added(e2) = add_edit(&dir, "Projekty/VPN.md", "Tunel do biura\n\nPort 443", "Port 443.", "c").unwrap() else {
+            panic!()
+        };
+        assert!(pending(&dir).unwrap().iter().all(|p| p.id != e1));
+        assert!(matches!(add_edit(&dir, "Projekty/VPN.md", "Tunel do biura\n", "r", "c").unwrap(), Added::Invalid(_)));
+
+        let idx = Index::build(&dir);
+        let path = accept(&dir, &idx, nid).unwrap();
+        assert_eq!(path, "Projekty/Router.md");
+        let n = vault::read_note(&dir, &path).unwrap();
+        assert_eq!(n.title, "Router");
+        assert!(n.body.contains("Konfiguracja"));
+
+        assert_eq!(accept(&dir, &idx, e2).unwrap(), "Projekty/VPN.md");
+        let v = vault::read_note(&dir, "Projekty/VPN.md").unwrap();
+        assert!(v.body.contains("Port 443") && v.frontmatter.contains("order: 2"));
+
+        // Konflikt: Notatka zmieniona po Propozycji nie jest nadpisywana.
+        let Added::Added(e3) = add_edit(&dir, "Projekty/VPN.md", "całkiem nowa", "r", "c").unwrap() else { panic!() };
+        vault::save_body(&dir, "Projekty/VPN.md", "zmiana użytkownika", &v.raw).unwrap();
+        assert!(accept(&dir, &idx, e3).is_err());
+        assert_eq!(vault::read_note(&dir, "Projekty/VPN.md").unwrap().body.trim(), "zmiana użytkownika");
         fs::remove_dir_all(&dir).unwrap();
     }
 }
