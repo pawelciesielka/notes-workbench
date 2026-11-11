@@ -542,12 +542,46 @@ fn open_link(app: AppHandle, url: String) -> Result<(), String> {
     Err(format!("Nieobsługiwany odnośnik: {url}"))
 }
 
+/// Dopasowuje okno główne do obszaru roboczego monitora (bez paska zadań) i ustawia je na środku.
+/// Domyślny rozmiar z konfiguracji (1400×900) na ekranie ze skalowaniem bywa wyższy niż ekran,
+/// a wtedy dół okna chowa się pod paskiem zadań.
+fn fit_main_window(app: &tauri::App) {
+    let Some(win) = app.get_webview_window("main") else { return };
+    let monitor = win.current_monitor().ok().flatten().or_else(|| win.primary_monitor().ok().flatten());
+    if let Some(m) = monitor {
+        let area = m.work_area();
+        let scale = m.scale_factor();
+        let (aw, ah) = (area.size.width as f64, area.size.height as f64);
+        // Najmniejszy rozmiar okna z konfiguracji (900×600) w pikselach fizycznych.
+        let (min_w, min_h) = (900.0 * scale, 600.0 * scale);
+        if aw < min_w || ah < min_h {
+            let _ = win.maximize();
+        } else {
+            // Rozmiar zewnętrzny (z paskiem tytułu i ramką); `set_size` ustawia wnętrze, więc ramkę odejmujemy.
+            let w = (1400.0 * scale).min(aw * 0.94).max(min_w);
+            let h = (900.0 * scale).min(ah * 0.94).max(min_h);
+            let (fw, fh) = match (win.outer_size(), win.inner_size()) {
+                (Ok(o), Ok(i)) => (o.width.saturating_sub(i.width) as f64, o.height.saturating_sub(i.height) as f64),
+                _ => (0.0, 0.0),
+            };
+            let _ = win.set_size(tauri::PhysicalSize::new((w - fw).round() as u32, (h - fh).round() as u32));
+            let _ = win.set_position(tauri::PhysicalPosition::new(
+                area.position.x + ((aw - w) / 2.0).round() as i32,
+                area.position.y + ((ah - h) / 2.0).round() as i32,
+            ));
+        }
+    }
+    // Okno startuje ukryte (bez mignięcia w złym miejscu); pokazujemy je zawsze, także gdy nie znamy monitora.
+    let _ = win.show();
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         .setup(|app| {
+            fit_main_window(app);
             if let Some(p) = settings_path(app.handle()) {
                 if let Ok(s) = fs::read_to_string(p) {
                     if let Ok(s) = serde_json::from_str::<Settings>(&s) {
