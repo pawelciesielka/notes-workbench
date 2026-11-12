@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import type { TreeNode } from "../lib/api";
 import { SORT_LABELS, sortTree, type SortMap, type SortMode } from "../lib/treeSort";
 import {
@@ -117,9 +117,37 @@ type Props = {
   /** Sortowanie Folderów (ścieżka → sposób; `""` to korzeń). Bez niego drzewo zostaje w Kolejności. */
   sort?: SortMap;
   onSort?: (folder: string, mode: SortMode) => void;
+  /**
+   * Przeciągnięcie węzła do Folderu `folder` (`""` to główny poziom). `before` podane: miejsce w Kolejności
+   * (przed tą ścieżką, `null` na końcu); bez niego tylko przeniesienie. Bez `onMove` drzewo nie pozwala przeciągać.
+   */
+  onMove?: (node: TreeNode, folder: string, before?: string | null) => void;
 };
 
-export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort }: Props) {
+function parentOf(path: string): string {
+  const i = path.lastIndexOf("/");
+  return i < 0 ? "" : path.slice(0, i);
+}
+
+/** Czy Folder `folder` leży w przeciąganym Folderze (albo nim jest). */
+function inside(node: TreeNode, folder: string): boolean {
+  return node.kind === "folder" && (folder === node.path || folder.startsWith(node.path + "/"));
+}
+
+/** Ile pikseli trzeba przesunąć wciśniętą myszą, zanim kliknięcie stanie się przeciąganiem. */
+const DRAG_PX = 5;
+/** Po tylu ms trzymania nad zwiniętym Folderem rozwijamy go. */
+const EXPAND_MS = 600;
+/** Część wysokości wiersza Folderu przy górnej i dolnej krawędzi, która znaczy „przed / za”, a nie „do środka”. */
+const EDGE = 0.28;
+
+/** Miejsce upuszczenia: do Folderu albo przed / za wierszem `row` (zmiana Kolejności). */
+type Target = { folder: string; before?: string | null; row: string | null; edge: "into" | "top" | "bottom" };
+type Drag = { node: TreeNode; x: number; y: number; target: Target | null };
+
+export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMove }: Props) {
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const justDragged = useRef(false);
   const [sortMenu, setSortMenu] = useState<{ folder: string; x: number; y: number } | null>(null);
   const modeOf = (folder: string): SortMode => sort?.[folder] ?? "order";
   const openSortMenu = (folder: string, el: HTMLElement) => {
@@ -213,6 +241,114 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort }: Pr
 
   const isActive = (n: TreeNode) => selected !== null && (selected === n.path || selected === n.folder_note);
 
+  // Sąsiedzi w wyświetlanej kolejności: następny węzeł w tym samym Folderze i pierwszy w Folderze.
+  const { nextOf, firstOf } = useMemo(() => {
+    const nextOf = new Map<string, string | null>();
+    const firstOf = new Map<string, string>();
+    const walk = (list: TreeNode[], parent: string) => {
+      if (list.length) firstOf.set(parent, list[0].path);
+      list.forEach((n, i) => {
+        nextOf.set(n.path, list[i + 1]?.path ?? null);
+        if (n.kind === "folder") walk(n.children, n.path);
+      });
+    };
+    walk(visible, "");
+    return { nextOf, firstOf };
+  }, [visible]);
+
+  /** Kolejność da się zmieniać tylko tam, gdzie Folder jest w Kolejności i nic nie jest odfiltrowane. */
+  const reorderable = (folder: string) => !filtering && modeOf(folder) === "order";
+
+  /** Miejsce upuszczenia `node` pod kursorem albo `null`, gdy tam nie można. */
+  const targetAt = (node: TreeNode, x: number, y: number): Target | null => {
+    const el = document.elementFromPoint(x, y);
+    if (!el || !listRef.current?.contains(el)) return null;
+    const from = parentOf(node.path);
+    const into = (folder: string): Target | null =>
+      folder !== from && !inside(node, folder) ? { folder, row: null, edge: "into" } : null;
+    const at = (folder: string, before: string | null, row: string, edge: "top" | "bottom"): Target | null => {
+      if (inside(node, folder) || before === node.path) return null;
+      // Już tu stoi: nic do zmiany.
+      if (folder === from && (nextOf.get(node.path) ?? null) === before) return null;
+      return { folder, before, row, edge };
+    };
+    const row = el.closest<HTMLElement>(".tree-row");
+    if (!row) return reorderable("") && from === "" ? at("", null, "", "bottom") : into("");
+    const path = row.dataset.path ?? "";
+    if (path === node.path) return null;
+    const b = row.getBoundingClientRect();
+    const frac = (y - b.top) / b.height;
+    const isFolder = row.dataset.kind === "folder";
+    if (isFolder && frac >= EDGE && frac <= 1 - EDGE) return into(path);
+    const parent = parentOf(path);
+    const top = isFolder ? frac < EDGE : frac < 0.5;
+    if (!reorderable(parent)) return into(parent);
+    if (top) return at(parent, path, path, "top");
+    // Pod rozwiniętym Folderem: na początek jego zawartości.
+    if (isFolder && row.dataset.open === "1" && firstOf.has(path) && reorderable(path))
+      return at(path, firstOf.get(path)!, path, "bottom");
+    return at(parent, nextOf.get(path) ?? null, path, "bottom");
+  };
+
+  /** Wiersz pod kursorem (do rozwijania zwiniętych Folderów w trakcie przeciągania). */
+  const rowAt = (x: number, y: number) => {
+    const el = document.elementFromPoint(x, y);
+    return el && listRef.current?.contains(el) ? el.closest<HTMLElement>(".tree-row") : null;
+  };
+
+  // Przeciąganie na zdarzeniach myszy: działa tak samo w oknie aplikacji i w przeglądarce.
+  const startDrag = (e: ReactMouseEvent, node: TreeNode) => {
+    if (!onMove || e.button !== 0) return;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    let active = false;
+    let hover: { path: string; timer: number } | null = null;
+    const clearHover = () => {
+      if (hover) window.clearTimeout(hover.timer);
+      hover = null;
+    };
+    const move = (ev: MouseEvent) => {
+      if (!active) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < DRAG_PX) return;
+        active = true;
+        document.body.classList.add("tree-dragging");
+      }
+      const target = targetAt(node, ev.clientX, ev.clientY);
+      // Zwinięty Folder, na który celujemy „do środka”, rozwijamy po chwili, żeby dało się upuścić głębiej.
+      const row = rowAt(ev.clientX, ev.clientY);
+      const over = target?.edge === "into" && row?.dataset.kind === "folder" && row.dataset.open !== "1" ? row.dataset.path! : null;
+      if (over !== hover?.path) {
+        clearHover();
+        if (over) hover = { path: over, timer: window.setTimeout(() => toggle(over, true), EXPAND_MS) };
+      }
+      setDrag({ node, x: ev.clientX, y: ev.clientY, target });
+    };
+    const end = (ev: MouseEvent | null) => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      window.removeEventListener("keydown", key, true);
+      clearHover();
+      document.body.classList.remove("tree-dragging");
+      setDrag(null);
+      if (!active) return;
+      // Kliknięcie, które przyjdzie zaraz po puszczeniu przycisku, nie otwiera Notatki.
+      justDragged.current = true;
+      window.setTimeout(() => (justDragged.current = false), 0);
+      const t = ev ? targetAt(node, ev.clientX, ev.clientY) : null;
+      if (t) onMove(node, t.folder, t.before);
+    };
+    const up = (ev: MouseEvent) => end(ev);
+    const key = (ev: globalThis.KeyboardEvent) => {
+      if (ev.key !== "Escape") return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      end(null);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    window.addEventListener("keydown", key, true);
+  };
+
   const onKey = (e: KeyboardEvent) => {
     if (!rows.length) return;
     const cur = focus ?? rows.find((r) => isActive(r.node))?.node.path ?? null;
@@ -280,14 +416,21 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort }: Pr
         isFolder ? "folder" : "leaf",
         isActive(n) ? "active" : "",
         focus === n.path ? "focused" : "",
+        drag?.node.path === n.path ? "drag-source" : "",
+        isFolder && drag?.target?.edge === "into" && drag.target.folder === n.path ? "drop-target" : "",
+        drag?.target?.row === n.path ? `drop-${drag.target.edge}` : "",
       ].join(" ");
       return (
         <div key={n.path} role="treeitem" aria-expanded={isFolder ? isOpen : undefined} aria-selected={isActive(n)}>
           <div
             className={cls}
             data-path={n.path}
+            data-kind={n.kind}
+            data-open={isOpen ? "1" : undefined}
             title={n.title}
+            onMouseDown={(e) => startDrag(e, n)}
             onClick={() => {
+              if (justDragged.current) return;
               setFocus(n.path);
               activate(n);
             }}
@@ -332,6 +475,7 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort }: Pr
                 className={`tree-sort${mode !== "order" ? " on" : ""}`}
                 title={`Sortowanie: ${SORT_LABELS[mode]}`}
                 aria-label={`Sortowanie Folderu „${n.title}”: ${SORT_LABELS[mode]}`}
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
                   openSortMenu(n.path, e.currentTarget);
@@ -417,7 +561,7 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort }: Pr
         </div>
       </div>
       <div
-        className="tree-list"
+        className={`tree-list${drag?.target && drag.target.folder === "" && !drag.target.row ? " drop-root" : ""}`}
         ref={listRef}
         role="tree"
         tabIndex={0}
@@ -434,6 +578,19 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort }: Pr
           render(visible, 0, "")
         )}
       </div>
+      {drag && (
+        <div className="tree-drag-ghost" style={{ left: drag.x + 14, top: drag.y + 10 }}>
+          {drag.node.kind === "folder" ? <FolderIcon size={14} /> : <FileIcon size={14} />}
+          <span>{drag.node.title}</span>
+          <span className="muted">
+            {!drag.target
+              ? "— tu nie można"
+              : `→ ${drag.target.folder === "" ? "główny poziom" : drag.target.folder.split("/").pop()}${
+                  drag.target.before !== undefined ? " (miejsce w Kolejności)" : ""
+                }`}
+          </span>
+        </div>
+      )}
       {sortMenu && onSort && (
         <ContextMenu
           x={sortMenu.x}

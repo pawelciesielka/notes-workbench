@@ -145,6 +145,7 @@ export const api = {
   rejectProposals: (ids: number[]) => invoke<void>("reject_proposals", { ids }),
   semanticStatus: () => invoke<SemanticInfo>("semantic_status"),
   semanticEnable: () => invoke<void>("semantic_enable"),
+  semanticActivate: () => invoke<void>("semantic_activate"),
   semanticSearch: (query: string) => invoke<SemHit[]>("semantic_search", { query }),
   similarNotes: (path: string) => invoke<NoteRef[]>("similar_notes", { path }),
   search:(query: string) => invoke<SearchResults>("search_notes", { query }),
@@ -180,6 +181,9 @@ export const api = {
   createFolder: (parent: string, name: string) => invoke<string>("create_folder", { parent, name }),
   renameFolder: (path: string, name: string) => invoke<OpResult>("rename_folder", { path, name }),
   moveNote: (path: string, folder: string) => invoke<OpResult>("move_note", { path, folder }),
+  moveFolder: (path: string, parent: string) => invoke<OpResult>("move_folder", { path, parent }),
+  /** Miejsce w Kolejności Folderu: przed `before`, `null` na końcu. */
+  setPosition: (path: string, before: string | null) => invoke<void>("set_position", { path, before }),
   trashFolder: (path: string) => invoke<string>("trash_folder", { path }),
   restoreFolder: (path: string) => invoke<string>("restore_folder", { path }),
   setFolderNoai: (path: string, on: boolean) => invoke<string>("set_folder_noai", { path, on }),

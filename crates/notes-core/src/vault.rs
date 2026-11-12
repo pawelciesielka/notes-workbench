@@ -90,7 +90,8 @@ fn folder_orders(vault: &Path) -> HashMap<String, i64> {
         .unwrap_or_default()
 }
 
-fn read_dir_tree(vault: &Path, dir: &Path, orders: &HashMap<String, i64>) -> Vec<TreeNode> {
+/// `deep`: z podfolderami; bez tego tylko jeden poziom (Foldery bez zawartości i bez Notatki folderu).
+fn read_dir_tree(vault: &Path, dir: &Path, orders: &HashMap<String, i64>, deep: bool) -> Vec<TreeNode> {
     let Ok(rd) = fs::read_dir(dir) else { return Vec::new() };
     let mut out = Vec::new();
     for e in rd.flatten() {
@@ -104,7 +105,7 @@ fn read_dir_tree(vault: &Path, dir: &Path, orders: &HashMap<String, i64>) -> Vec
                 continue;
             }
             let r = rel(vault, &p);
-            let mut children = read_dir_tree(vault, &p, orders);
+            let mut children = if deep { read_dir_tree(vault, &p, orders, true) } else { Vec::new() };
             let fnote = children.iter().position(|c| c.kind == "note" && c.name == name);
             let folder_note = fnote.map(|i| children.remove(i));
             out.push(TreeNode {
@@ -147,7 +148,47 @@ fn read_dir_tree(vault: &Path, dir: &Path, orders: &HashMap<String, i64>) -> Vec
 pub fn tree(vault: &Path, trash: bool) -> Vec<TreeNode> {
     let orders = folder_orders(vault);
     let root = if trash { vault.join(TRASH_DIR) } else { vault.to_path_buf() };
-    read_dir_tree(vault, &root, &orders)
+    read_dir_tree(vault, &root, &orders, true)
+}
+
+/// Zawartość jednego Folderu (`""` to korzeń) w Kolejności, bez zaglądania w podfoldery.
+pub fn folder_level(vault: &Path, folder: &str) -> Result<Vec<TreeNode>, String> {
+    let own = folder.rsplit('/').next().unwrap_or("");
+    let mut list = read_dir_tree(vault, &resolve(vault, folder)?, &folder_orders(vault), false);
+    // Notatka folderu nie jest w drzewie osobnym wierszem.
+    list.retain(|n| !(n.kind == "note" && !own.is_empty() && n.name == own));
+    Ok(list)
+}
+
+/// Ustawia pole `order` Notatki, zachowując czas modyfikacji pliku: Kolejność to nie zmiana treści,
+/// więc indeksy i wektory nie muszą jej przeliczać, a sortowanie po dacie się nie zmienia.
+pub fn set_note_order(vault: &Path, rel_path: &str, order: i64) -> Result<(), String> {
+    let p = note_file(vault, rel_path)?;
+    let raw = fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+    let (fm, body) = split_frontmatter(&raw);
+    let v = order.to_string();
+    if fm_value(fm, "order").as_deref() == Some(v.as_str()) {
+        return Ok(());
+    }
+    let modified = fs::metadata(&p).and_then(|m| m.modified());
+    write_atomic(&p, &compose(&set_fm(fm, "order", Some(&v)), body))?;
+    if let Ok(t) = modified {
+        let _ = fs::File::options().write(true).open(&p).and_then(|f| f.set_modified(t));
+    }
+    Ok(())
+}
+
+/// Zapisuje Kolejność Folderów (`ścieżka → order`), dopisując do istniejących wpisów.
+pub fn set_folder_orders(vault: &Path, changes: &HashMap<String, i64>) -> Result<(), String> {
+    if changes.is_empty() {
+        return Ok(());
+    }
+    let mut map = folder_orders(vault);
+    map.extend(changes.iter().map(|(k, v)| (k.clone(), *v)));
+    let dir = vault.join(APP_DIR);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let sorted: std::collections::BTreeMap<_, _> = map.into_iter().collect();
+    fs::write(dir.join("kolejnosc-folderow.json"), serde_json::to_string_pretty(&sorted).unwrap()).map_err(|e| e.to_string())
 }
 
 /// Ścieżka w Skarbcu z adresu względnego; odrzuca wyjście poza Skarbiec.

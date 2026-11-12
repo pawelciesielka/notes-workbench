@@ -4,6 +4,8 @@ import { api, type SearchHit, type SemanticInfo } from "../lib/api";
 import { SearchIcon, XIcon } from "./Icons";
 
 type Props = {
+  /** Panel jest widoczny: dopiero wtedy wczytujemy model wyszukiwania po znaczeniu. */
+  active: boolean;
   activeNote: string | null;
   /** Zmienia się, gdy trzeba ustawić kursor w polu (skrót Ctrl+Shift+F). */
   focusKey: number;
@@ -46,21 +48,26 @@ function SemanticState({ info, onEnable }: { info: SemanticInfo | null; onEnable
     );
   if (info.error) return <div className="banner bad">{info.error}</div>;
   if (info.running && info.phase) {
-    const pct = info.total ? (100 * info.done) / info.total : 3;
+    // Wczytywanie modelu nie zgłasza postępu: pasek „w toku” zamiast procentów.
+    const loading = !info.model_ready || !info.total;
     return (
       <div className="pad">
         <div className="progress">
-          <div className="progress-bar" style={{ width: `${pct}%` }} />
+          {loading ? (
+            <div className="progress-bar indeterminate" />
+          ) : (
+            <div className="progress-bar" style={{ width: `${(100 * info.done) / info.total}%` }} />
+          )}
           <span>{info.total && info.phase.startsWith("Liczenie") ? `Wektory: ${info.done} / ${info.total}` : info.phase}</span>
         </div>
-        {info.notes > 0 && <div className="muted small">Wyniki obejmują na razie {info.notes} Notatek.</div>}
+        {info.model_ready && info.notes > 0 && <div className="muted small">Wyniki obejmują na razie {info.notes} Notatek.</div>}
       </div>
     );
   }
   return null;
 }
 
-export function SearchPanel({ activeNote, focusKey, onOpen, onError }: Props) {
+export function SearchPanel({ active, activeNote, focusKey, onOpen, onError }: Props) {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<Mode>("words");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
@@ -84,7 +91,13 @@ export function SearchPanel({ activeNote, focusKey, onOpen, onError }: Props) {
     };
   }, []);
 
-  const semReady = !!sem?.enabled && (sem.notes > 0 || sem.model_ready);
+  const semEnabled = !!sem?.enabled;
+  useEffect(() => {
+    if (active && semEnabled) api.semanticActivate().catch((e) => onError(String(e)));
+  }, [active, semEnabled, onError]);
+
+  // Zapytanie zamienia na wektor model, więc szukanie po znaczeniu czeka na jego wczytanie.
+  const semReady = semEnabled && !!sem?.model_ready;
 
   useEffect(() => {
     const q = query.trim();

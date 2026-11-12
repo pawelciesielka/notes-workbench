@@ -231,6 +231,29 @@ export default function App() {
   };
   const fixedMsg = (n: number) => (n > 0 ? ` Poprawiono Linki w ${n} Notatkach.` : "");
 
+  /**
+   * Przeciągnięcie w drzewie: Notatka albo Folder do Folderu `folder` (`""` to główny poziom), a gdy podano
+   * `before`, także na to miejsce w Kolejności (przed tą ścieżką, `null` na końcu).
+   */
+  const onTreeMove = (n: TreeNode, folder: string, before?: string | null) =>
+    run(async () => {
+      const isFolder = n.kind === "folder";
+      const moving = folder !== folderOf(n.path);
+      let path = n.path;
+      let fixed = 0;
+      if (moving) {
+        const r = isFolder ? await api.moveFolder(n.path, folder) : await api.moveNote(n.path, folder);
+        path = r.path;
+        fixed = r.fixed;
+      }
+      if (before !== undefined) await api.setPosition(path, before);
+      onChanged(true);
+      if (moving) followMove(n.path, path, isFolder);
+      // Kolejność zapisuje się we frontmatterze, więc otwarta Notatka musi wczytać nową wersję pliku.
+      else setReloadKey((k) => k + 1);
+      setInfo(moving ? `Przeniesiono „${n.title}” do ${folder || "głównego poziomu"}.${fixedMsg(fixed)}` : `Zmieniono Kolejność „${n.title}”.`);
+    });
+
   const noteMenu = (n: TreeNode): MenuItem[] => {
     const locked = summary?.noai.includes(n.path) ?? false;
     const stem = n.path.split("/").pop()!.replace(/\.md$/, "");
@@ -668,7 +691,7 @@ export default function App() {
         </div>
         {/* Panel wyszukiwania zostaje w drzewie DOM, żeby po przełączeniu zakładek nie gubić wyników. */}
         <div className="tree" style={{ display: side === "search" ? undefined : "none" }}>
-          <SearchPanel activeNote={selected} focusKey={searchFocus} onOpen={openNote} onError={onError} />
+          <SearchPanel active={side === "search"} activeNote={selected} focusKey={searchFocus} onOpen={openNote} onError={onError} />
         </div>
         {side === "search" ? null : side === "tags" ? (
           <div className="tree">
@@ -681,6 +704,7 @@ export default function App() {
             noai={noaiSet}
             onOpen={openNote}
             onMenu={onTreeMenu}
+            onMove={side === "trash" ? undefined : onTreeMove}
             sort={side === "trash" ? undefined : treeSort.sort}
             onSort={side === "trash" ? undefined : treeSort.setSort}
           />

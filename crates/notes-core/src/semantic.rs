@@ -233,7 +233,7 @@ impl Semantic {
         if !Self::model_cached(data_dir) {
             return Err("Wyszukiwanie po znaczeniu nie jest włączone: włącz je w aplikacji Notes Workbench (Szukaj → Znaczenie).".into());
         }
-        self.ensure_model(data_dir)?;
+        self.ensure_model(data_dir, &|_| {})?;
         let mut g = self.store.lock().unwrap();
         if g.as_ref().map(|s| s.vault.as_path()) != Some(vault) {
             let db = db_path(data_dir, vault);
@@ -245,7 +245,20 @@ impl Semantic {
         Ok(())
     }
 
-    fn ensure_model(&self, data_dir: &Path) -> Result<(), String> {
+    /// Wczytuje zapisane wektory Skarbca bez modelu (wystarczą do Notatek podobnych).
+    /// Nie tworzy bazy, gdy jej jeszcze nie ma.
+    pub fn open_store(&self, data_dir: &Path, vault: &Path) -> Result<(), String> {
+        let mut g = self.store.lock().unwrap();
+        if g.as_ref().map(|s| s.vault.as_path()) != Some(vault) {
+            let db = db_path(data_dir, vault);
+            if db.exists() {
+                *g = Some(Store::open(&db, vault, false)?);
+            }
+        }
+        Ok(())
+    }
+
+    fn ensure_model(&self, data_dir: &Path, report: &dyn Fn(&Status)) -> Result<(), String> {
         if self.model.lock().unwrap().is_some() {
             return Ok(());
         }
@@ -258,6 +271,7 @@ impl Semantic {
                 format!("Pobieranie modelu (ok. {MODEL_MB} MB, jednorazowo)…")
             }
         });
+        report(&self.status());
         let m = TextEmbedding::try_new(
             TextInitOptions::new(EmbeddingModel::MultilingualE5Small)
                 .with_cache_dir(cache)
@@ -277,7 +291,7 @@ impl Semantic {
 
     /// Zadanie w tle: model, a potem wektory nowych i zmienionych Notatek. `report` dostaje postęp.
     pub fn run(&self, data_dir: &Path, vault: &Path, report: &dyn Fn(&Status)) -> Result<(), String> {
-        self.ensure_model(data_dir)?;
+        self.ensure_model(data_dir, report)?;
         {
             let mut g = self.store.lock().unwrap();
             if g.as_ref().map(|s| s.vault.as_path()) != Some(vault) {

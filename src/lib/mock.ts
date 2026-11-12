@@ -151,6 +151,10 @@ const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
     };
   },
   similar_notes: () => [{ path: "Przykłady/Monitoring/grafana.md", title: "Grafana – dashboardy", stem: "" }],
+  semantic_activate: () => undefined,
+  move_note: (a) => ({ path: `${a.folder ? `${a.folder}/` : ""}${String(a.path).split("/").pop()}`, fixed: 0 }),
+  set_position: () => undefined,
+  move_folder: (a) => ({ path: `${a.parent ? `${a.parent}/` : ""}${String(a.path).split("/").pop()}`, fixed: 0 }),
   semantic_status: () => ({ enabled: false, model_ready: false, running: false, phase: "", done: 0, total: 0, notes: 0, error: null, model: "multilingual-e5-small", model_mb: 470 }),
   search_notes: () => ({
     partial: false,

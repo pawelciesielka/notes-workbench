@@ -30,12 +30,14 @@ struct AppState {
     semantic: Semantic,
     sem_running: AtomicBool,
     sem_again: AtomicBool,
+    /// Użytkownik wszedł w Szukaj w tej sesji: dopiero wtedy wczytujemy model (kilkaset MB pamięci).
+    sem_wanted: AtomicBool,
 }
 
 /// Uruchamia w tle liczenie wektorów (jeśli włączone); gdy już trwa, zleca ponowny przebieg po nim.
 fn start_semantic(app: &AppHandle) {
     let state = app.state::<AppState>();
-    if !state.settings.lock().unwrap().semantic {
+    if !state.settings.lock().unwrap().semantic || !state.sem_wanted.load(Ordering::SeqCst) {
         return;
     }
     if state.sem_running.swap(true, Ordering::SeqCst) {
@@ -139,13 +141,13 @@ fn save_settings(app: &AppHandle, s: &Settings) -> Result<(), String> {
     fs::write(p, serde_json::to_string_pretty(s).unwrap()).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_vault(state: State<AppState>) -> Option<String> {
     let v = state.settings.lock().unwrap().vault.clone();
     v.filter(|p| PathBuf::from(p).is_dir())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_vault(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
     if !PathBuf::from(&path).is_dir() {
         return Err("Wskazany katalog nie istnieje".into());
@@ -191,14 +193,14 @@ async fn import_amno(app: AppHandle, export: String, vault: String) -> Result<am
     Ok(report)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn vault_tree(state: State<AppState>, trash: bool) -> Result<Vec<vault::TreeNode>, String> {
     let v = state.vault()?;
     let label = if trash { "drzewo Kosza" } else { "drzewo Notatek" };
     Ok(startlog::timed(label, || vault::tree(&v, trash)))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn read_note(state: State<AppState>, path: String) -> Result<vault::NoteData, String> {
     vault::read_note(&state.vault()?, &path)
 }
@@ -220,7 +222,7 @@ async fn vault_index(app: AppHandle, state: State<'_, AppState>, rebuild: bool) 
     state.with_index(|idx, _| idx.summary())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn search_notes(state: State<AppState>, query: String, limit: Option<usize>) -> Result<search::Results, String> {
     state.with_search(|s, _| s.search(&query, limit.unwrap_or(100)))?
 }
@@ -233,7 +235,7 @@ struct SemanticInfo {
     model_mb: u32,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn semantic_status(state: State<AppState>) -> SemanticInfo {
     let mut status = state.semantic.status();
     status.enabled = state.settings.lock().unwrap().semantic;
@@ -241,7 +243,7 @@ fn semantic_status(state: State<AppState>) -> SemanticInfo {
 }
 
 /// Włącza wyszukiwanie semantyczne: przy pierwszym razie pobiera model.
-#[tauri::command]
+#[tauri::command(async)]
 fn semantic_enable(app: AppHandle, state: State<AppState>) -> Result<(), String> {
     let s = {
         let mut s = state.settings.lock().unwrap();
@@ -249,8 +251,18 @@ fn semantic_enable(app: AppHandle, state: State<AppState>) -> Result<(), String>
         s.clone()
     };
     save_settings(&app, &s)?;
+    state.sem_wanted.store(true, Ordering::SeqCst);
     start_semantic(&app);
     Ok(())
+}
+
+/// Wejście w Szukaj: wczytuje model i dolicza wektory zmienionych Notatek (gdy wyszukiwanie po znaczeniu jest włączone).
+#[tauri::command(async)]
+fn semantic_activate(app: AppHandle, state: State<AppState>) {
+    if !state.sem_wanted.swap(true, Ordering::SeqCst) {
+        startlog::mark("wyszukiwanie po znaczeniu: wczytywanie modelu");
+    }
+    start_semantic(&app);
 }
 
 #[tauri::command]
@@ -261,8 +273,14 @@ async fn semantic_search(state: State<'_, AppState>, query: String) -> Result<Ve
     Ok(semantic::fuse(sem, words.hits, 50))
 }
 
-#[tauri::command]
-fn similar_notes(state: State<AppState>, path: String) -> Result<Vec<index::NoteRef>, String> {
+#[tauri::command(async)]
+fn similar_notes(app: AppHandle, state: State<AppState>, path: String) -> Result<Vec<index::NoteRef>, String> {
+    if state.settings.lock().unwrap().semantic {
+        if let Ok(d) = app.path().app_local_data_dir() {
+            // Same zapisane wektory, bez modelu: Notatki podobne działają, zanim ktoś wejdzie w Szukaj.
+            state.semantic.open_store(&d, &state.vault()?)?;
+        }
+    }
     let sims = state.semantic.similar(&path, 6);
     state.with_index(|idx, _| {
         sims.into_iter()
@@ -272,28 +290,28 @@ fn similar_notes(state: State<AppState>, path: String) -> Result<Vec<index::Note
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn note_links(state: State<AppState>, path: String) -> Result<index::NoteLinks, String> {
     let note = vault::read_note(&state.vault()?, &path)?;
     state.with_index(|idx, _| idx.note_links(&path, &note.raw))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn resolve_link(state: State<AppState>, from: String, target: String) -> Result<Option<String>, String> {
     state.with_index(|idx, _| idx.resolve(&from, &target))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn tag_notes(state: State<AppState>, tag: String) -> Result<Vec<index::NoteRef>, String> {
     state.with_index(|idx, _| idx.tag_notes(&tag))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn graph(state: State<AppState>) -> Result<index::Graph, String> {
     state.with_index(|idx, _| idx.graph())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn save_note(state: State<AppState>, path: String, body: String, expected: String) -> Result<vault::NoteData, String> {
     let n = vault::save_body(&state.vault()?, &path, &body, &expected)?;
     state.changed(None, Some(&path))?;
@@ -301,7 +319,7 @@ fn save_note(state: State<AppState>, path: String, body: String, expected: Strin
 }
 
 /// Załącznik Notatki: treść w surowym ciele żądania, Notatka i nazwa w nagłówkach (zakodowane URI).
-#[tauri::command]
+#[tauri::command(async)]
 fn add_attachment(state: State<AppState>, request: tauri::ipc::Request<'_>) -> Result<vault::Attachment, String> {
     let header = |k: &str| -> Result<String, String> {
         let v = request.headers().get(k).and_then(|v| v.to_str().ok()).ok_or(format!("Brak nagłówka {k}"))?;
@@ -313,7 +331,7 @@ fn add_attachment(state: State<AppState>, request: tauri::ipc::Request<'_>) -> R
     vault::add_attachment(&state.vault()?, &header("x-note")?, &header("x-name")?, data)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_note_title(state: State<AppState>, path: String, title: String) -> Result<vault::NoteData, String> {
     let n = vault::set_title(&state.vault()?, &path, &title)?;
     state.changed(None, Some(&path))?;
@@ -329,7 +347,7 @@ struct ProposalView {
 }
 
 /// Oczekujące Propozycje z tytułami Notatek (najpierw sprząta te o nieistniejących Notatkach).
-#[tauri::command]
+#[tauri::command(async)]
 fn list_proposals(state: State<AppState>) -> Result<Vec<ProposalView>, String> {
     let vault = state.vault()?;
     startlog::mark("Propozycje: wczytywanie");
@@ -356,7 +374,7 @@ struct AcceptResult {
 }
 
 /// Akceptuje Propozycje (zapis w Notatkach). Błąd jednej nie zatrzymuje pozostałych.
-#[tauri::command]
+#[tauri::command(async)]
 fn accept_proposals(app: AppHandle, state: State<AppState>, ids: Vec<u64>) -> Result<AcceptResult, String> {
     let vault = state.vault()?;
     let kinds: std::collections::HashMap<u64, proposals::Kind> =
@@ -387,7 +405,7 @@ fn accept_proposals(app: AppHandle, state: State<AppState>, ids: Vec<u64>) -> Re
     Ok(res)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn reject_proposals(state: State<AppState>, ids: Vec<u64>) -> Result<(), String> {
     let vault = state.vault()?;
     for id in ids {
@@ -397,28 +415,28 @@ fn reject_proposals(state: State<AppState>, ids: Vec<u64>) -> Result<(), String>
 }
 
 /// Oznacza Notatkę jako niedostępną dla AI (Tag `noai` we frontmatterze) albo zdejmuje oznaczenie.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_noai(state: State<AppState>, path: String, on: bool) -> Result<vault::NoteData, String> {
     let n = vault::set_fm_tag(&state.vault()?, &path, index::NOAI_TAG, on)?;
     state.changed(None, Some(&path))?;
     Ok(n)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn create_note(state: State<AppState>, folder: String, title: String) -> Result<String, String> {
     let p = vault::create_note(&state.vault()?, &folder, &title)?;
     state.changed(None, Some(&p))?;
     Ok(p)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn trash_note(state: State<AppState>, path: String) -> Result<String, String> {
     let p = vault::trash_note(&state.vault()?, &path)?;
     state.changed(Some(&path), None)?;
     Ok(p)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn restore_note(state: State<AppState>, path: String) -> Result<String, String> {
     let p = vault::restore_note(&state.vault()?, &path)?;
     state.changed(None, Some(&p))?;
@@ -442,14 +460,14 @@ struct OpResult {
     fixed: usize,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn create_folder(app: AppHandle, state: State<AppState>, parent: String, name: String) -> Result<String, String> {
     let p = notes_core::ops::create_folder(&state.vault()?, &parent, &name)?;
     start_semantic(&app);
     Ok(p)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn rename_folder(app: AppHandle, state: State<AppState>, path: String, name: String) -> Result<OpResult, String> {
     let vault = state.vault()?;
     let (p, fixed) = state.with_index(|idx, _| notes_core::ops::rename_folder(&vault, idx, &path, &name))??;
@@ -458,7 +476,7 @@ fn rename_folder(app: AppHandle, state: State<AppState>, path: String, name: Str
     Ok(OpResult { path: p, fixed })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn move_note(app: AppHandle, state: State<AppState>, path: String, folder: String) -> Result<OpResult, String> {
     let vault = state.vault()?;
     let (p, fixed) = state.with_index(|idx, _| notes_core::ops::move_note(&vault, idx, &path, &folder))??;
@@ -467,14 +485,29 @@ fn move_note(app: AppHandle, state: State<AppState>, path: String, folder: Strin
     Ok(OpResult { path: p, fixed })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
+fn move_folder(app: AppHandle, state: State<AppState>, path: String, parent: String) -> Result<OpResult, String> {
+    let vault = state.vault()?;
+    let (p, fixed) = state.with_index(|idx, _| notes_core::ops::move_folder(&vault, idx, &path, &parent))??;
+    state.reindex()?;
+    start_semantic(&app);
+    Ok(OpResult { path: p, fixed })
+}
+
+/// Miejsce Notatki albo Folderu w Kolejności jego Folderu: przed `before` (`None`: na końcu).
+#[tauri::command(async)]
+fn set_position(state: State<AppState>, path: String, before: Option<String>) -> Result<(), String> {
+    notes_core::ops::set_position(&state.vault()?, &path, before.as_deref())
+}
+
+#[tauri::command(async)]
 fn trash_folder(state: State<AppState>, path: String) -> Result<String, String> {
     let p = notes_core::ops::trash_folder(&state.vault()?, &path)?;
     state.reindex()?;
     Ok(p)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn restore_folder(app: AppHandle, state: State<AppState>, path: String) -> Result<String, String> {
     let p = notes_core::ops::restore_folder(&state.vault()?, &path)?;
     state.reindex()?;
@@ -482,7 +515,7 @@ fn restore_folder(app: AppHandle, state: State<AppState>, path: String) -> Resul
     Ok(p)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_folder_noai(state: State<AppState>, path: String, on: bool) -> Result<String, String> {
     let p = notes_core::ops::set_folder_noai(&state.vault()?, &path, on)?;
     state.reindex()?;
@@ -490,13 +523,13 @@ fn set_folder_noai(state: State<AppState>, path: String, on: bool) -> Result<Str
 }
 
 /// Pokazuje plik albo katalog ze Skarbca zaznaczony w Eksploratorze.
-#[tauri::command]
+#[tauri::command(async)]
 fn reveal_path(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
     let p = vault::resolve(&state.vault()?, &path)?;
     app.opener().reveal_item_in_dir(&p).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn mcp_status(state: State<AppState>) -> Result<mcp_setup::Status, String> {
     Ok(mcp_setup::status(&state.vault()?.to_string_lossy()))
 }
@@ -518,14 +551,14 @@ async fn mcp_disconnect(state: State<'_, AppState>, client: String) -> Result<mc
 }
 
 /// Otwiera katalog Skarbca w Eksploratorze Windows.
-#[tauri::command]
+#[tauri::command(async)]
 fn reveal_vault(app: AppHandle, state: State<AppState>) -> Result<(), String> {
     let v = state.vault()?;
     app.opener().open_path(v.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
 }
 
 /// Otwiera plik ze Skarbca (Załącznik) w domyślnym programie Windows.
-#[tauri::command]
+#[tauri::command(async)]
 fn open_vault_file(app: AppHandle, state: State<AppState>, path: String) -> Result<(), String> {
     let p = vault::resolve(&state.vault()?, &path)?;
     if !p.exists() {
@@ -535,7 +568,7 @@ fn open_vault_file(app: AppHandle, state: State<AppState>, path: String) -> Resu
 }
 
 /// Otwiera odnośnik spoza Skarbca: stronę w przeglądarce albo Link zewnętrzny do pliku.
-#[tauri::command]
+#[tauri::command(async)]
 fn open_link(app: AppHandle, url: String) -> Result<(), String> {
     let lower = url.to_ascii_lowercase();
     if lower.starts_with("file:") {
@@ -586,7 +619,7 @@ fn fit_main_window(app: &tauri::App) {
 }
 
 /// Znacznik z interfejsu (np. „drzewo wyświetlone”) do dziennika startu.
-#[tauri::command]
+#[tauri::command(async)]
 fn start_mark(label: String) {
     startlog::mark(&format!("interfejs: {label}"));
 }
@@ -658,6 +691,7 @@ pub fn run() {
             search_notes,
             semantic_status,
             semantic_enable,
+            semantic_activate,
             semantic_search,
             similar_notes,
             note_links,
@@ -682,6 +716,8 @@ pub fn run() {
             create_folder,
             rename_folder,
             move_note,
+            move_folder,
+            set_position,
             trash_folder,
             restore_folder,
             set_folder_noai,
