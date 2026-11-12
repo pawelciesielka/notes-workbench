@@ -3,6 +3,7 @@ name = "notes-workbench"
 version = "0.1.0"
 description = "Notes Workbench"
 edition = "2021"
+license = "MIT"
 
 [lib]
 name = "notes_workbench_lib"

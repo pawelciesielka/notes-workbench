@@ -68,7 +68,7 @@ const mcp = {
   args: ["--mcp", "--vault", "C:\\Notatki"],
   vault: "C:\\Notatki",
   clients: [
-    { id: "claude-desktop", name: "Claude Desktop", detected: true, connected: true, config: "C:\\Users\\Jan\\AppData\\Local\\Claude\\claude_desktop_config.json", after: "Zamknij Claude całkowicie (ikona w zasobniku → Quit) i uruchom ponownie." },
+    { id: "claude-desktop", name: "Claude Desktop", detected: true, connected: true, config: "C:\\Users\\Jan\\AppData\\Roaming\\Claude\\claude_desktop_config.json", after: "Zamknij Claude całkowicie (ikona w zasobniku → Quit) i uruchom ponownie." },
     { id: "claude-code", name: "Claude Code", detected: true, connected: false, config: "C:\\Users\\Jan\\.claude.json", after: "Działa w nowych sesjach Claude Code." },
     { id: "codex", name: "Codex", detected: false, connected: false, config: "C:\\Users\\Jan\\.codex\\config.toml", after: "Działa w nowych sesjach Codex." },
   ],

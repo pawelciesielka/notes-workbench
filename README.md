@@ -92,3 +92,7 @@ Wynik trafia do `.notes-workbench/import/raport.json` i `raport.md` w Skarbcu (w
 - `crates/notes-mcp/`: serwer MCP (stdio, JSON-RPC), tylko do odczytu
 - `src-tauri/src/`: komendy aplikacji i protokół `vault://` (obrazy, PDF ze Skarbca)
 - `src/`: UI (React): drzewo, widok i edytor Notatki (CodeMirror), Tagi, Graf wiedzy (force-graph), Raport, kreator Importu
+
+## Licencja
+
+MIT, zob. [LICENSE](LICENSE).
