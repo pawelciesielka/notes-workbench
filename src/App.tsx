@@ -15,6 +15,7 @@ import { ContextMenu, FolderPicker, PromptDialog, type MenuItem } from "./compon
 import { sortItems } from "./components/Tree";
 import { SORT_LABELS, useTreeSort } from "./lib/treeSort";
 import { SIDEBAR_DEFAULT, useSidebarWidth } from "./lib/sidebarWidth";
+import { UpdateBanner, UpdateFooter, useUpdates } from "./components/Updates";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
   CheckIcon,
@@ -194,6 +195,7 @@ export default function App() {
       />,
     );
 
+  const updates = useUpdates();
   const [sideWidth, setSideWidth] = useSidebarWidth();
   const [sideDragging, setSideDragging] = useState(false);
 
@@ -683,17 +685,19 @@ export default function App() {
             onSort={side === "trash" ? undefined : treeSort.setSort}
           />
         )}
-        {report && (
-          <div className="side-foot">
+        <div className="side-foot">
+          {report && (
             <button
               className={`ghost side-report${report.ok ? "" : " bad"}${main.kind === "report" ? " on" : ""}`}
               onClick={() => setMain({ kind: "report" })}
             >
               <ReportIcon size={15} /> Raport importu {report.ok ? <CheckIcon size={14} /> : `(${report.errors} błędów)`}
             </button>
-          </div>
-        )}
+          )}
+          <UpdateFooter updates={updates} />
+        </div>
       </aside>
+      <UpdateBanner updates={updates} />
       <div
         className="side-divider"
         role="separator"

@@ -8,3 +8,6 @@ src-tauri/gen/
 # Eksport AMNO (dane prywatne, źródło Importu)
 My Data.htm
 My Data - files/
+
+# Pliki wydania (scripts/release.mjs)
+release/

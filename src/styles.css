@@ -488,6 +488,42 @@ input::placeholder {
   color: var(--bad-fg);
 }
 
+/* Aktualizacje: wersja w stopce panelu i pasek „Dostępna nowa wersja” */
+.update-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px 8px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+.update-footer .small-btn {
+  font-size: 12px;
+}
+.update-status {
+  flex-basis: 100%;
+  color: var(--muted);
+}
+.update-status.bad {
+  color: var(--bad-fg);
+}
+.update-banner {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  z-index: 65;
+  max-width: calc(100% - 40px);
+}
+
 /* Pole wyszukiwania z ikoną */
 .search-field {
   flex: 1;

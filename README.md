@@ -93,6 +93,25 @@ Wynik trafia do `.notes-workbench/import/raport.json` i `raport.md` w Skarbcu (w
 - `src-tauri/src/`: komendy aplikacji i protokół `vault://` (obrazy, PDF ze Skarbca)
 - `src/`: UI (React): drzewo, widok i edytor Notatki (CodeMirror), Tagi, Graf wiedzy (force-graph), Raport, kreator Importu
 
+## Aktualizacje i wydania
+
+Program kilka sekund po starcie sprawdza `latest.json` z najnowszego wydania na GitHubie (wtyczka updater Tauri)
+i pokazuje pasek „Dostępna nowa wersja”. W stopce panelu jest wersja programu i „Sprawdź aktualizacje”.
+Instalator aktualizacji musi być podpisany kluczem wydawcy; klucz publiczny jest w `src-tauri/tauri.conf.json`,
+prywatny w `%USERPROFILE%\.tauri\notes-workbench.key` (poza repozytorium; jego utrata oznacza, że zainstalowane
+kopie nie przyjmą kolejnych aktualizacji).
+
+Nowe wydanie:
+
+```
+node scripts/release.mjs 0.2.0 "Opis zmian"
+git commit -am "Wersja 0.2.0" && git push
+gh release create v0.2.0 release/v0.2.0/* --title "Notes Workbench 0.2.0" --notes "..."
+```
+
+Skrypt ustawia wersję we wszystkich manifestach, buduje podpisany instalator i składa w `release/v<wersja>/`
+instalator i `latest.json`. Wydanie nie może być oznaczone jako pre-release, bo program czyta „latest”.
+
 ## Licencja
 
 MIT, zob. [LICENSE](LICENSE).

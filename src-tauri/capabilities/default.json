@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Uprawnienia głównego okna",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-message"]
+  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-message", "updater:default", "process:allow-restart"]
 }
