@@ -266,14 +266,46 @@ input::placeholder {
 }
 .sidebar {
   width: 310px;
-  min-width: 230px;
-  max-width: 60vw;
-  resize: horizontal;
+  flex: none;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   background: var(--bg-side);
   border-right: 1px solid var(--border);
+}
+/* Separator drzewa i Notatki: szeroki na chwytanie, nakłada się na krawędź panelu. */
+.side-divider {
+  flex: none;
+  width: 8px;
+  margin: 0 -4px;
+  position: relative;
+  z-index: 5;
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+}
+.side-divider::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.12s;
+}
+.side-divider:hover::after,
+.side-divider:focus-visible::after,
+.side-dragging .side-divider::after {
+  background: var(--accent);
+}
+.app.side-dragging {
+  user-select: none;
+  cursor: col-resize;
+}
+.app.side-dragging .main,
+.app.side-dragging .sidebar {
+  pointer-events: none;
 }
 .main {
   flex: 1;

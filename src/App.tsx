@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, folderOf, type Report, type Summary, type TreeNode } from "./lib/api";
 import { Tree } from "./components/Tree";
@@ -14,6 +14,7 @@ import { useTheme, type ThemeMode } from "./lib/theme";
 import { ContextMenu, FolderPicker, PromptDialog, type MenuItem } from "./components/Menu";
 import { sortItems } from "./components/Tree";
 import { SORT_LABELS, useTreeSort } from "./lib/treeSort";
+import { SIDEBAR_DEFAULT, useSidebarWidth } from "./lib/sidebarWidth";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
   CheckIcon,
@@ -192,6 +193,9 @@ export default function App() {
         }
       />,
     );
+
+  const [sideWidth, setSideWidth] = useSidebarWidth();
+  const [sideDragging, setSideDragging] = useState(false);
 
   // ===== Menu kontekstowe drzewa =====
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
@@ -543,9 +547,26 @@ export default function App() {
   };
   const trashCount = countNotes(trashTree);
 
+  const startSideDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const x0 = e.clientX;
+    const w0 = sideWidth;
+    setSideDragging(true);
+    const move = (ev: PointerEvent) => setSideWidth(w0 + ev.clientX - x0, false);
+    const up = (ev: PointerEvent) => {
+      setSideWidth(w0 + ev.clientX - x0);
+      setSideDragging(false);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   return (
-    <div className="app">
-      <aside className="sidebar">
+    <div className={`app${sideDragging ? " side-dragging" : ""}`}>
+      <aside className="sidebar" style={{ width: sideWidth }}>
         <div className="side-head">
           <div className="vault-name">
             <span className="vault-icon">
@@ -673,6 +694,23 @@ export default function App() {
           </div>
         )}
       </aside>
+      <div
+        className="side-divider"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Szerokość panelu z drzewem"
+        aria-valuenow={sideWidth}
+        tabIndex={0}
+        title="Przeciągnij, aby zmienić szerokość drzewa. Dwuklik: domyślna."
+        onPointerDown={startSideDrag}
+        onDoubleClick={() => setSideWidth(SIDEBAR_DEFAULT)}
+        onKeyDown={(e) => {
+          const d = e.key === "ArrowRight" ? 20 : e.key === "ArrowLeft" ? -20 : 0;
+          if (!d) return;
+          e.preventDefault();
+          setSideWidth(sideWidth + d);
+        }}
+      />
       <main className="main">
         {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
         {dialog}
