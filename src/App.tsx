@@ -93,13 +93,13 @@ export default function App() {
   const loadVault = useCallback(
     async (rebuild: boolean) => {
       try {
-        const [, s, r] = await Promise.all([
+        // Raport importu pokazujemy tylko zaraz po imporcie (onImported), nie przy każdym otwarciu Skarbca.
+        const [, s] = await Promise.all([
           loadTrees().then(() => api.startMark("drzewo wyświetlone")),
           api.index(rebuild),
-          api.readReport(),
         ]);
         setSummary(s);
-        setReport(r);
+        setReport(null);
         api.startMark(`dane wczytane (${s.notes.length} Notatek)`);
         api
           .proposals()

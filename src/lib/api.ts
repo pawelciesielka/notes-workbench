@@ -172,7 +172,6 @@ export const api = {
   importAmno: (exportPath: string, vault: string) => invoke<Report>("import_amno", { export: exportPath, vault }),
   tree: (trash: boolean) => invoke<TreeNode[]>("vault_tree", { trash }),
   readNote: (path: string) => invoke<NoteData>("read_note", { path }),
-  readReport: () => invoke<Report | null>("read_report"),
   revealVault: () => invoke<void>("reveal_vault"),
   mcpStatus: () => invoke<McpStatus>("mcp_status"),
   mcpConnect: (client: string) => invoke<McpStatus>("mcp_connect", { client }),

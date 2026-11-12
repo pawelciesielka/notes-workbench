@@ -425,16 +425,6 @@ fn restore_note(state: State<AppState>, path: String) -> Result<String, String> 
     Ok(p)
 }
 
-#[tauri::command]
-fn read_report(state: State<AppState>) -> Result<Option<serde_json::Value>, String> {
-    startlog::mark("raport importu: wczytywanie");
-    let p = state.vault()?.join(vault::APP_DIR).join("import").join("raport.json");
-    match fs::read_to_string(p) {
-        Ok(s) => serde_json::from_str(&s).map(Some).map_err(|e| e.to_string()),
-        Err(_) => Ok(None),
-    }
-}
-
 impl AppState {
     /// Po operacjach zmieniających wiele ścieżek naraz: indeks od nowa, wyszukiwanie dogania zmiany.
     fn reindex(&self) -> Result<(), String> {
@@ -683,7 +673,6 @@ pub fn run() {
             create_note,
             trash_note,
             restore_note,
-            read_report,
             open_vault_file,
             reveal_vault,
             reveal_path,

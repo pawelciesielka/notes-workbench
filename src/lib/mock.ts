@@ -94,7 +94,6 @@ const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
     ],
     noai: ["Przykłady/Sieć.md"],
   }),
-  read_report: () => ({ ok: true, errors: 0, warnings: 19, counts: {}, issues: [], source: "", vault: "", date: "", started: "", finished: "" }),
   list_proposals: () => [
     {
       id: 1, kind: "relation", note: "systemd.md", target: "Przykłady/Monitoring/graphite.md",

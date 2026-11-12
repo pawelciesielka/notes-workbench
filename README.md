@@ -65,7 +65,8 @@ cargo run --release -p amno-import -- "My Data.htm" "C:\Notatki-test"
 ```
 
 Import nie przerywa się na błędach. Każdą Notatkę porównuje tekstowo z eksportem, a pliki sumą SHA-256.
-Wynik trafia do `.notes-workbench/import/raport.json` i `raport.md` w Skarbcu (w aplikacji: „Raport importu”).
+Wynik trafia do `.notes-workbench/import/raport.json` i `raport.md` w Skarbcu; aplikacja pokazuje „Raport importu”
+tylko zaraz po imporcie, później jest już tylko w tych plikach.
 
 ## Układ Skarbca
 
