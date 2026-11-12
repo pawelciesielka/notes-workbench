@@ -8,6 +8,7 @@ import { tags as t } from "@lezer/highlight";
 import { autocompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
 import type { Summary } from "../lib/api";
 import { filesOf } from "../lib/attach";
+import { DATE_KEY, DATETIME_KEY, dateText, dateTimeText } from "../lib/dateText";
 
 type Props = {
   value: string;
@@ -100,6 +101,12 @@ const highlight = HighlightStyle.define([
   { tag: t.comment, color: "var(--faint)", fontStyle: "italic" },
 ]);
 
+/** Wstawia tekst w miejscu zaznaczenia. */
+function insertText(v: EditorView, text: string): boolean {
+  v.dispatch(v.state.replaceSelection(text));
+  return true;
+}
+
 /** Wstawia Markdown Załączników w `pos`, w osobnych liniach. */
 function insertBlock(v: EditorView, pos: number, md: string) {
   if (!md) return;
@@ -131,6 +138,8 @@ export function Editor({ value, summary, onChange, onSave, onFiles, onScrollLine
           placeholder("Pisz w Markdownie. [[ wstawia Link do Notatki, # dodaje Tag. Zrzut ekranu wklej Ctrl+V, pliki przeciągnij."),
           autocompletion({ override: [completions(() => latest.current.summary)], activateOnTyping: true }),
           keymap.of([
+            { key: DATE_KEY, preventDefault: true, run: (v) => insertText(v, dateText()) },
+            { key: DATETIME_KEY, preventDefault: true, run: (v) => insertText(v, dateTimeText()) },
             {
               key: "Mod-s",
               preventDefault: true,

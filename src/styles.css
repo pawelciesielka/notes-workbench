@@ -2045,3 +2045,197 @@ input::placeholder {
   color: var(--fg);
   background: var(--press);
 }
+
+/* ===== Edytor wizualny (WYSIWYG) ===== */
+.mode-switch {
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  margin-right: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.mode-switch button {
+  height: 24px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  box-shadow: none;
+}
+.mode-switch button.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.visual-editor {
+  flex: 1;
+  min-height: 0;
+  max-width: calc(780px * var(--note-scale, 1));
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  background: var(--surface);
+}
+.ve-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-side);
+  position: relative;
+}
+.ve-btn {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  box-shadow: none;
+}
+.ve-btn:hover:not(:disabled) {
+  background: var(--accent-softer);
+}
+.ve-btn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ve-btn:disabled {
+  opacity: 0.35;
+}
+.ve-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border);
+}
+.ve-swatches {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.ve-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: none;
+}
+.ve-link {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 6px;
+}
+.ve-link input {
+  width: 260px;
+  height: 26px;
+}
+.ve-warn {
+  margin: 8px 10px 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  max-width: none;
+}
+.banner.warn {
+  background: var(--mark);
+  color: var(--fg);
+}
+.ve-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 22px 40px;
+}
+.ve-content .tiptap {
+  outline: none;
+  min-height: 100%;
+}
+.ve-content .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--faint);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.ve-content .tiptap ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 4px;
+}
+.ve-content .tiptap ul[data-type="taskList"] li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.ve-content .tiptap ul[data-type="taskList"] li > label {
+  margin-top: 0.25em;
+}
+.ve-content .tiptap ul[data-type="taskList"] li > div {
+  flex: 1;
+}
+.ve-content .tiptap td,
+.ve-content .tiptap th {
+  position: relative;
+  min-width: 40px;
+}
+.ve-content .tiptap .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+.ve-content .tiptap img.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+.ve-suggest {
+  position: fixed;
+  z-index: 1000;
+  max-height: 260px;
+  min-width: 240px;
+  max-width: 420px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.ve-suggest-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.ve-suggest-item.on,
+.ve-suggest-item:hover {
+  background: var(--accent-soft);
+}
+.ve-suggest-detail {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

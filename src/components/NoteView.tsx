@@ -20,7 +20,8 @@ import {
 import { Editor } from "./Editor";
 import { useNoteScale } from "../lib/zoom";
 import { attachFiles, filesOf } from "../lib/attach";
-import { LAYOUTS, useSplit } from "../lib/split";
+import { LAYOUTS, useEditorMode, useSplit } from "../lib/split";
+import { VisualEditor } from "./VisualEditor";
 import { rehypeSourceLines, scrollPreviewTo } from "../lib/scrollSync";
 import { CheckIcon, LayoutIcon, LinkIcon, LockIcon, PencilIcon, SparkIcon, TrashIcon, UnlockIcon, XIcon } from "./Icons";
 
@@ -59,7 +60,10 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
   const [similar, setSimilar] = useState<NoteRef[]>([]);
 
   // Podgląd obok edytora pokazuje zapisaną treść; Linki odświeżane po każdym zapisie.
-  const [layout, setLayout, ratio, setRatio] = useSplit();
+  const [splitLayout, setLayout, ratio, setRatio] = useSplit();
+  // Edytor wizualny sam pokazuje wynik: bez podglądu obok.
+  const [visual, setVisual] = useEditorMode();
+  const layout = visual ? "single" : splitLayout;
   const [dragging, setDragging] = useState(false);
   const splitRef = useRef<HTMLDivElement>(null);
   // Podgląd idzie za edytorem: ostatnia pozycja edytora, ponawiana po odświeżeniu podglądu.
@@ -518,6 +522,17 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
   // Udział edytora; podgląd zajmuje resztę.
   const editorPane = (
     <div key="ed" className="split-pane split-editor" style={{ flexBasis: splitOn ? `${ratio * 100}%` : "100%" }}>
+      {visual ? (
+        <VisualEditor
+          value={draft}
+          notePath={path}
+          summary={summary}
+          onChange={onDraft}
+          onSave={() => void flush()}
+          onFiles={onFiles}
+          onMarkdown={() => setVisual(false)}
+        />
+      ) : (
       <Editor
         value={draft}
         summary={summary}
@@ -526,6 +541,7 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
         onFiles={onFiles}
         onScrollLine={onScrollLine}
       />
+      )}
     </div>
   );
   const previewPane = splitOn ? (
@@ -612,6 +628,18 @@ export function NoteView({ path, summary, startEditing, onError, onOpen, onTag, 
             <div className="note-actions">
               {edit && <span className={`save-state ${save}`}>{saveLabel}</span>}
               {edit && (
+                <div className="mode-switch" role="radiogroup" aria-label="Rodzaj edytora">
+                  <button role="radio" aria-checked={!visual} className={!visual ? "on" : ""} onClick={() => setVisual(false)}
+                    title="Edycja tekstu Markdown z podglądem">
+                    Markdown
+                  </button>
+                  <button role="radio" aria-checked={visual} className={visual ? "on" : ""} onClick={() => setVisual(true)}
+                    title="Edycja wizualna (WYSIWYG), jak w edytorze tekstu">
+                    Wizualny
+                  </button>
+                </div>
+              )}
+              {edit && !visual && (
                 <div className="layout-picker" role="radiogroup" aria-label="Układ edytora i podglądu">
                   {LAYOUTS.map((l) => (
                     <button

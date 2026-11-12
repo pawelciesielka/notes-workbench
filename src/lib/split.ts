@@ -55,3 +55,15 @@ export function useSplit(): [SplitLayout, (l: SplitLayout) => void, number, (r: 
   }, []);
   return [layout, setLayout, ratio, setRatio];
 }
+
+const MODE_KEY = "notes-workbench.editor-mode";
+
+/** Rodzaj edytora: Markdown (CodeMirror) albo wizualny (WYSIWYG); zapamiętywany. */
+export function useEditorMode(): [boolean, (visual: boolean) => void] {
+  const [visual, setVisualState] = useState<boolean>(() => load(MODE_KEY, (s) => s === "visual", false));
+  const setVisual = useCallback((v: boolean) => {
+    setVisualState(v);
+    store(MODE_KEY, v ? "visual" : "markdown");
+  }, []);
+  return [visual, setVisual];
+}

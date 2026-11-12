@@ -21,6 +21,13 @@ zapisywana (konflikt), a pozostałe zaznaczone Propozycje przechodzą dalej.
 Foldery: Claude proponuje nowe Foldery (`propose_folder`, opcjonalnie z treścią Notatki folderu) i zmiany ich nazw
 (`propose_folder_rename`); Notatki można proponować od razu do Folderu, który dopiero czeka na akceptację.
 
+Edytor: „Markdown” (CodeMirror z podglądem obok) albo „Wizualny” (WYSIWYG, TipTap) z paskiem formatowania:
+nagłówki, pogrubienie, kolory i wyróżnienia, listy i listy zadań, tabele ze scalaniem komórek, wyrównanie, linki.
+Wybór jest zapamiętywany. Edytor wizualny zapisuje Markdown tak jak Import (kolory jako `<span style>`, wyrównanie
+jako `<div align>`, złożone tabele jako HTML), ale normalizuje zapis całej Notatki przy pierwszej zmianie. Gdy po
+wczytaniu wynik różniłby się od oryginału (np. nieobsługiwany HTML), pokazuje ostrzeżenie; plik jest zapisywany
+dopiero po zmianie treści (`src/lib/mdHtml.ts`, `src/components/VisualEditor.tsx`).
+
 Załączniki: zrzut ekranu wklejony Ctrl+V albo pliki przeciągnięte na Notatkę trafiają do `<Notatka>.assets/`.
 W edytorze Link wstawia się w miejscu kursora (albo upuszczenia), w podglądzie na końcu Notatki.
 

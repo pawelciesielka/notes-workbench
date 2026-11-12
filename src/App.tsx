@@ -783,6 +783,8 @@ export default function App() {
               <span>Poruszanie się po drzewie</span>
               <kbd>[[</kbd>
               <span>Link do innej Notatki (w edycji)</span>
+              <kbd>Ctrl+;</kbd>
+              <span>Wstaw datę (Ctrl+Shift+; z godziną)</span>
             </div>
           </div>
         )}
