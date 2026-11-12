@@ -1,6 +1,6 @@
 [package]
 name = "notes-core"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 license = "MIT"
 description = "Skarbiec Notes Workbench: odczyt i zapis Notatek, Graf wiedzy, wyszukiwanie"
