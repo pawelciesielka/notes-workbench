@@ -1,6 +1,6 @@
 [package]
 name = "amno-import"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 description = "Import Eksportu AMNO (All My Notes Organizer, HTML) do Skarbca Markdown"

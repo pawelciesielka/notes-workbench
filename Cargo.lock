@@ -54,7 +54,7 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "amno-import"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "ego-tree",
@@ -2771,7 +2771,7 @@ dependencies = [
 
 [[package]]
 name = "notes-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "amno-import",
  "chrono",
@@ -2785,7 +2785,7 @@ dependencies = [
 
 [[package]]
 name = "notes-mcp"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "notes-core",
  "serde",
@@ -2794,7 +2794,7 @@ dependencies = [
 
 [[package]]
 name = "notes-workbench"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "amno-import",
  "chrono",
