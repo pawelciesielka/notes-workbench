@@ -18,6 +18,8 @@ Etap 6: tą samą drogą Claude proponuje nowe Notatki (`propose_note`) i zmiany
 albo dopisek na końcu). W widoku „Propozycje” widać treść nowej Notatki i różnice zmian; można zaznaczyć wiele
 Propozycji i zaakceptować je naraz. Zmiana Notatki, która od czasu Propozycji zmieniła się na dysku, nie jest
 zapisywana (konflikt), a pozostałe zaznaczone Propozycje przechodzą dalej.
+Foldery: Claude proponuje nowe Foldery (`propose_folder`, opcjonalnie z treścią Notatki folderu) i zmiany ich nazw
+(`propose_folder_rename`); Notatki można proponować od razu do Folderu, który dopiero czeka na akceptację.
 
 Załączniki: zrzut ekranu wklejony Ctrl+V albo pliki przeciągnięte na Notatkę trafiają do `<Notatka>.assets/`.
 W edytorze Link wstawia się w miejscu kursora (albo upuszczenia), w podglądzie na końcu Notatki.

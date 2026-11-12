@@ -117,6 +117,7 @@ fn after_move(vault: &Path, folder_from: Option<(&str, &str)>, moved: &HashMap<S
                 let _ = fs::write(&p, serde_json::to_string_pretty(&map).unwrap());
             }
         }
+        let _ = proposals::rename_folder_paths(vault, from, to);
     }
     let _ = proposals::rename_paths(vault, moved);
 }

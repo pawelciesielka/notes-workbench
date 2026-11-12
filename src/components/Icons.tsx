@@ -32,6 +32,12 @@ export const FolderIcon = (p: P) => (
     <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" />
   </Svg>
 );
+export const FolderPlusIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" />
+    <path d="M12 10.5v6M9 13.5h6" />
+  </Svg>
+);
 export const FolderOpenIcon = (p: P) => (
   <Svg {...p}>
     <path d="M3 17.5V7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h7.8A1.5 1.5 0 0 1 20 9.5V11" />
@@ -42,6 +48,12 @@ export const FileIcon = (p: P) => (
   <Svg {...p}>
     <path d="M14 3H7.5A1.5 1.5 0 0 0 6 4.5v15A1.5 1.5 0 0 0 7.5 21h9a1.5 1.5 0 0 0 1.5-1.5V7z" />
     <path d="M14 3v4h4M9 12h6M9 15.5h6" />
+  </Svg>
+);
+export const FilePlusIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M14 3H7.5A1.5 1.5 0 0 0 6 4.5v15A1.5 1.5 0 0 0 7.5 21h9a1.5 1.5 0 0 0 1.5-1.5V7z" />
+    <path d="M14 3v4h4M12 10.5v6M9 13.5h6" />
   </Svg>
 );
 export const SearchIcon = (p: P) => (

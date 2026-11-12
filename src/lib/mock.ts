@@ -117,6 +117,16 @@ const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
       reason: "Port zmieniony na 443 według nowszej Notatki.", source: "Claude (MCP)", created: "2026-11-10 12:02",
       status: "pending", note_title: "Router domowy", target_title: null,
     },
+    {
+      id: 5, kind: "folder", note: "Przykłady", title: "Sieć", body: "Notatki o sieci: router, Wi-Fi, DNS.",
+      reason: "Notatki o sieci są rozrzucone po Przykładach.", source: "Claude (MCP)", created: "2026-11-10 12:03",
+      status: "pending", note_title: "Przykłady", target_title: null,
+    },
+    {
+      id: 6, kind: "rename", note: "Dziennik", title: "Dziennik 2024",
+      reason: "Wszystkie Notatki w Folderze są z 2024 roku.", source: "Claude (MCP)", created: "2026-11-10 12:04",
+      status: "pending", note_title: "Dziennik", target_title: null,
+    },
   ],
   accept_proposals: (a) => ({ done: (a.ids as number[]).length - 1, created: [], failed: [[(a.ids as number[])[0], "Notatka „Router domowy” zmieniła się od czasu Propozycji, więc jej nie nadpisuję."]] }),
   reject_proposals: () => null,

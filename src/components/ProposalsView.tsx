@@ -12,7 +12,10 @@ type Props = {
 
 type Filter = "all" | "relation" | "tag" | "text";
 
-const isText = (p: Proposal) => p.kind === "note" || p.kind === "edit";
+/** Nowe Notatki, zmiany treści i Foldery (zmieniają pliki w Skarbcu, a nie tylko frontmatter). */
+const isText = (p: Proposal) => p.kind === "note" || p.kind === "edit" || p.kind === "folder" || p.kind === "rename";
+const isFolderKind = (p: Proposal) => p.kind === "note" || p.kind === "folder" || p.kind === "rename";
+const where = (folder: string) => (folder ? folder.replace(/\//g, " / ") : "głównym Folderze");
 
 /** Potwierdzenie w oknie systemowym; w podglądzie przeglądarki zwykłe `confirm`. */
 async function confirmBox(msg: string): Promise<boolean> {
@@ -168,7 +171,7 @@ export function ProposalsView({ onOpen, onError, onChanged }: Props) {
   const bulk = async (accept: boolean) => {
     const what = accept ? "Zaakceptować" : "Odrzucić";
     const texts = target.filter(isText).length;
-    const extra = accept && texts ? `\n\nW tym ${texts} nowych Notatek lub zmian treści: zostaną zapisane w Skarbcu.` : "";
+    const extra = accept && texts ? `\n\nW tym ${texts} nowych Notatek, Folderów lub zmian: zostaną zapisane w Skarbcu.` : "";
     if (await confirmBox(`${what} ${targetLabel} Propozycje?${extra}`)) void act(accept, target.map((p) => p.id));
   };
 
@@ -189,7 +192,7 @@ export function ProposalsView({ onOpen, onError, onChanged }: Props) {
       <div className="note-head">
         <h1 className="note-title">Propozycje</h1>
         <p className="muted">
-          Zmiany zaproponowane przez AI (np. Claude przez serwer MCP): powiązania, Tagi, nowe Notatki i zmiany treści.
+          Zmiany zaproponowane przez AI (np. Claude przez serwer MCP): powiązania, Tagi, nowe Notatki i Foldery, zmiany treści i nazw Folderów.
           Do Skarbca trafiają dopiero po akceptacji. Odrzucone nie zostaną zaproponowane ponownie.
         </p>
         <div className="proposal-bar">
@@ -197,7 +200,7 @@ export function ProposalsView({ onOpen, onError, onChanged }: Props) {
             {tab("all", "Wszystkie", items.length)}
             {tab("relation", "Powiązania", count((p) => p.kind === "relation"))}
             {tab("tag", "Tagi", count((p) => p.kind === "tag"))}
-            {tab("text", "Notatki i zmiany", count(isText))}
+            {tab("text", "Notatki, Foldery i zmiany", count(isText))}
           </div>
         </div>
         {shown.length > 0 && (
@@ -265,7 +268,7 @@ export function ProposalsView({ onOpen, onError, onChanged }: Props) {
                     <>
                       <span className="proposal-kind note-kind">Nowa Notatka</span>
                       <b>{p.title}</b>
-                      <span className="muted"> w {p.note ? p.note.replace(/\//g, " / ") : "głównym Folderze"}</span>
+                      <span className="muted"> w {where(p.note)}</span>
                     </>
                   )}
                   {p.kind === "edit" && (
@@ -274,13 +277,26 @@ export function ProposalsView({ onOpen, onError, onChanged }: Props) {
                       {link(p.note, p.note_title)}
                     </>
                   )}
+                  {p.kind === "folder" && (
+                    <>
+                      <span className="proposal-kind note-kind">Nowy Folder</span>
+                      <b>{p.title}</b>
+                      <span className="muted"> w {where(p.note)}</span>
+                    </>
+                  )}
+                  {p.kind === "rename" && (
+                    <>
+                      <span className="proposal-kind edit-kind">Zmiana nazwy Folderu</span>
+                      <span className="muted">{where(p.note)}</span> → <b>{p.title}</b>
+                    </>
+                  )}
                 </div>
                 <div className="proposal-reason">{p.reason}</div>
-                {p.kind === "note" && <NoteBody body={p.body ?? ""} />}
+                {(p.kind === "note" || (p.kind === "folder" && !!p.body?.trim())) && <NoteBody body={p.body ?? ""} />}
                 {p.kind === "edit" && <EditDiff base={p.base ?? ""} body={p.body ?? ""} />}
                 {failed.has(p.id) && <div className="proposal-error">{failed.get(p.id)}</div>}
                 <div className="proposal-meta muted small">
-                  {[p.kind === "note" ? "" : folderOf(p.note), p.source, p.created].filter(Boolean).join(" · ")}
+                  {[isFolderKind(p) ? "" : folderOf(p.note), p.source, p.created].filter(Boolean).join(" · ")}
                 </div>
               </div>
               <div className="proposal-actions">

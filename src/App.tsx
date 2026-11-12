@@ -18,6 +18,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import {
   CheckIcon,
   FileIcon,
+  FilePlusIcon,
   LinkIcon,
   LockIcon,
   MoveIcon,
@@ -26,6 +27,7 @@ import {
   TypeIcon,
   UnlockIcon,
   FolderIcon,
+  FolderPlusIcon,
   FolderOpenAction,
   GraphIcon,
   ImportIcon,
@@ -74,7 +76,10 @@ export default function App() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.getVault().then((v) => setVault(v ?? null));
+    api.getVault().then((v) => {
+      api.startMark(v ? "Skarbiec znany" : "brak Skarbca");
+      setVault(v ?? null);
+    });
   }, []);
 
   const loadTrees = useCallback(async () => {
@@ -86,9 +91,14 @@ export default function App() {
   const loadVault = useCallback(
     async (rebuild: boolean) => {
       try {
-        const [, s, r] = await Promise.all([loadTrees(), api.index(rebuild), api.readReport()]);
+        const [, s, r] = await Promise.all([
+          loadTrees().then(() => api.startMark("drzewo wyświetlone")),
+          api.index(rebuild),
+          api.readReport(),
+        ]);
         setSummary(s);
         setReport(r);
+        api.startMark(`dane wczytane (${s.notes.length} Notatek)`);
         api
           .proposals()
           .then((p) => setProposalCount(p.length))
@@ -107,7 +117,10 @@ export default function App() {
   // Pliki mogły zmienić się poza aplikacją: po powrocie do okna odtwarzamy indeks.
   useEffect(() => {
     if (!vault) return;
-    const onFocus = () => loadVault(true);
+    const onFocus = () => {
+      api.startMark("powrót do okna: odświeżenie");
+      loadVault(true);
+    };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [vault, loadVault]);
@@ -159,6 +172,26 @@ export default function App() {
       setError(String(e));
     }
   };
+
+  /** Folder bieżącej Notatki (dla Notatki folderu: sam Folder); `""` to główny poziom Skarbca. */
+  const currentFolder = main.kind === "note" && !main.path.startsWith(".kosz/") ? folderOf(main.path) : "";
+
+  const newFolder = () =>
+    setDialog(
+      <PromptDialog
+        title={currentFolder ? `Nowy Folder w „${currentFolder.replace(/\//g, " / ")}”` : "Nowy Folder"}
+        label="Nazwa"
+        initial="Nowy Folder"
+        okLabel="Utwórz"
+        onClose={closeDialog}
+        onOk={(name) =>
+          run(async () => {
+            await api.createFolder(currentFolder, name);
+            onChanged(true);
+          })
+        }
+      />,
+    );
 
   // ===== Menu kontekstowe drzewa =====
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
@@ -552,8 +585,21 @@ export default function App() {
           </div>
         </div>
         <div className="side-tools">
-          <button className="primary new-note" onClick={() => void newNote()} title="Nowa Notatka w Folderze bieżącej Notatki">
-            <PlusIcon size={15} /> Nowa Notatka
+          <button
+            className="primary new-note"
+            onClick={() => void newNote()}
+            title="Nowa Notatka w Folderze bieżącej Notatki"
+            aria-label="Nowa Notatka"
+          >
+            <FilePlusIcon />
+          </button>
+          <button
+            className="icon-btn"
+            onClick={newFolder}
+            title={`Nowy Folder w ${currentFolder ? `„${currentFolder}”` : "głównym poziomie Skarbca"}`}
+            aria-label="Nowy Folder"
+          >
+            <FolderPlusIcon />
           </button>
           <button
             className={`icon-btn${main.kind === "graph" ? " on" : ""}`}

@@ -4,7 +4,7 @@
 //! odrzucenia, są częścią jego danych: odrzucona Propozycja nie wraca, także po przeinstalowaniu
 //! aplikacji. Zaakceptowana znika z kolejki i trafia do frontmattera Notatki (ADR 0002):
 //! powiązanie jako `powiazane: ["[[…]]"]`, Tag jako `tags: [...]`.
-//! Nowa Notatka i zmiana treści Notatki też czekają tu na akceptację; zmiana treści zapamiętuje treść,
+//! Nowa Notatka, zmiana treści Notatki, nowy Folder i zmiana nazwy Folderu też czekają tu na akceptację; zmiana treści zapamiętuje treść,
 //! od której wyszła, i nie nadpisze Notatki zmienionej w międzyczasie.
 
 use crate::index::{self, Index};
@@ -22,6 +22,15 @@ pub enum Kind {
     Note,
     /// Nowa treść istniejącej Notatki (frontmatter zostaje): `body`, a `base` to treść w chwili Propozycji.
     Edit,
+    /// Nowy Folder: `note` to Folder nadrzędny, `title` nazwa, `body` (opcjonalnie) treść Notatki folderu.
+    Folder,
+    /// Zmiana nazwy Folderu: `note` to Folder, `title` nowa nazwa.
+    Rename,
+}
+
+/// Propozycje, w których `note` to Folder, a nie Notatka.
+pub fn is_folder_kind(k: &Kind) -> bool {
+    matches!(k, Kind::Note | Kind::Folder | Kind::Rename)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -236,7 +245,9 @@ pub fn add_note(vault: &Path, folder: &str, title: &str, body: &str, reason: &st
         return Ok(Added::Invalid(format!("Treść jest za długa (najwyżej {MAX_BODY} znaków).")));
     }
     let bad = folder.split('/').any(|s| s.is_empty() || s.starts_with('.') || s.ends_with(".assets"));
-    if !folder.is_empty() && (bad || !vault.join(folder).is_dir()) {
+    let (parent, last) = folder.rsplit_once('/').unwrap_or(("", folder));
+    let exists = vault.join(folder).is_dir() || folder_pending(vault, parent, last);
+    if !folder.is_empty() && (bad || !exists) {
         return Ok(Added::NotFound(format!("Nie ma Folderu „{folder}”. Użyj list_notes, żeby znaleźć Folder.")));
     }
     let f = load(vault)?;
@@ -271,7 +282,100 @@ pub fn add_edit(vault: &Path, note: &str, body: &str, reason: &str, source: &str
     push(vault, text_proposal(Kind::Edit, note, None, body, Some(current), reason, source))
 }
 
-/// Akceptuje: zapisuje w Notatce i usuwa z kolejki. Zwraca zmienioną albo utworzoną Notatkę.
+fn bad_folder(folder: &str) -> bool {
+    folder.split('/').any(|s| s.is_empty() || s.starts_with('.') || s.ends_with(".assets"))
+}
+
+fn join(dir: &str, name: &str) -> String {
+    if dir.is_empty() {
+        name.to_string()
+    } else {
+        format!("{dir}/{name}")
+    }
+}
+
+/// Dodaje Propozycję nowego Folderu `name` w Folderze `parent` (pusty: główny poziom Skarbca),
+/// opcjonalnie z treścią Notatki folderu.
+pub fn add_folder(vault: &Path, parent: &str, name: &str, body: &str, reason: &str, source: &str) -> Result<Added, String> {
+    let parent = parent.trim().trim_matches('/');
+    let name = name.trim();
+    if name.is_empty() {
+        return Ok(Added::Invalid("Podaj nazwę Folderu (name).".into()));
+    }
+    if reason.trim().is_empty() {
+        return Ok(Added::Invalid("Podaj uzasadnienie (reason).".into()));
+    }
+    if body.chars().count() > MAX_BODY {
+        return Ok(Added::Invalid(format!("Treść jest za długa (najwyżej {MAX_BODY} znaków).")));
+    }
+    if !parent.is_empty() && (bad_folder(parent) || !vault.join(parent).is_dir()) {
+        return Ok(Added::NotFound(format!("Nie ma Folderu „{parent}”. Użyj list_notes, żeby znaleźć Folder.")));
+    }
+    let dir = amno_import::names::sanitize(name);
+    if dir.starts_with('.') || dir.ends_with(".assets") {
+        return Ok(Added::Invalid("Niedozwolona nazwa Folderu.".into()));
+    }
+    if vault.join(join(parent, &dir)).is_dir() {
+        return Ok(Added::Invalid(format!("Folder „{}” już istnieje.", join(parent, &dir))));
+    }
+    let f = load(vault)?;
+    let dup = f.proposals.iter().find(|p| {
+        p.kind == Kind::Folder && p.note == parent && p.title.as_deref().map(amno_import::names::sanitize).as_deref() == Some(dir.as_str())
+    });
+    if let Some(p) = dup {
+        return Ok(if p.status == Status::Rejected { Added::RejectedBefore } else { Added::AlreadyPending });
+    }
+    push(vault, text_proposal(Kind::Folder, parent, Some(name.to_string()), body, None, reason, source))
+}
+
+/// Czy Folder `name` w `parent` czeka jako Propozycja nowego Folderu (`name` to nazwa katalogu).
+pub fn folder_pending(vault: &Path, parent: &str, name: &str) -> bool {
+    pending(vault).is_ok_and(|list| {
+        list.iter().any(|p| {
+            p.kind == Kind::Folder && p.note == parent && p.title.as_deref().map(amno_import::names::sanitize).as_deref() == Some(name)
+        })
+    })
+}
+
+/// Dodaje Propozycję zmiany nazwy Folderu `folder` na `name`. Czekająca zmiana nazwy tego samego Folderu jest zastępowana.
+pub fn add_rename(vault: &Path, folder: &str, name: &str, reason: &str, source: &str) -> Result<Added, String> {
+    let folder = folder.trim().trim_matches('/');
+    let name = name.trim();
+    if folder.is_empty() || bad_folder(folder) || !vault.join(folder).is_dir() {
+        return Ok(Added::NotFound(format!("Nie ma Folderu „{folder}”. Użyj list_notes, żeby znaleźć Folder.")));
+    }
+    if name.is_empty() {
+        return Ok(Added::Invalid("Podaj nową nazwę Folderu (name).".into()));
+    }
+    if reason.trim().is_empty() {
+        return Ok(Added::Invalid("Podaj uzasadnienie (reason).".into()));
+    }
+    let old = folder.rsplit('/').next().unwrap_or(folder);
+    let new = amno_import::names::sanitize(name);
+    if new == old {
+        return Ok(Added::Invalid("Folder ma już tę nazwę.".into()));
+    }
+    if new.starts_with('.') || new.ends_with(".assets") {
+        return Ok(Added::Invalid("Niedozwolona nazwa Folderu.".into()));
+    }
+    let mut f = load(vault)?;
+    if f.proposals.iter().any(|p| {
+        p.kind == Kind::Rename && p.note == folder && p.status == Status::Rejected && p.title.as_deref().map(str::trim) == Some(name)
+    }) {
+        return Ok(Added::RejectedBefore);
+    }
+    let before = f.proposals.len();
+    f.proposals.retain(|p| !(p.kind == Kind::Rename && p.note == folder && p.status == Status::Pending));
+    if f.proposals.len() != before {
+        save(vault, &f)?;
+    }
+    let mut p = text_proposal(Kind::Rename, folder, Some(name.to_string()), "", None, reason, source);
+    p.body = None;
+    push(vault, p)
+}
+
+/// Akceptuje: zapisuje w Notatce i usuwa z kolejki. Zwraca zmienioną albo utworzoną Notatkę
+/// (dla Folderu: jego Notatkę folderu albo sam Folder; dla zmiany nazwy: nową ścieżkę Folderu).
 pub fn accept(vault: &Path, idx: &Index, id: u64) -> Result<String, String> {
     let mut f = load(vault)?;
     let pos = f.proposals.iter().position(|p| p.id == id && p.status == Status::Pending).ok_or("Nie ma takiej Propozycji")?;
@@ -309,6 +413,34 @@ pub fn accept(vault: &Path, idx: &Index, id: u64) -> Result<String, String> {
             }
             vault::save_body(vault, &p.note, p.body.as_deref().unwrap_or_default(), &n.raw)?;
         }
+        Kind::Folder => {
+            let name = p.title.as_deref().unwrap_or_default();
+            // Folder mógł już powstać (np. przy akceptacji Notatki zaproponowanej do niego): wtedy go używamy.
+            let existing = join(&p.note, &amno_import::names::sanitize(name));
+            let path = if vault.join(&existing).is_dir() { existing } else { crate::ops::create_folder(vault, &p.note, name)? };
+            let body = p.body.as_deref().unwrap_or_default();
+            let mut out = path.clone();
+            if !body.trim().is_empty() {
+                let dir_name = path.rsplit('/').next().unwrap_or(&path).to_string();
+                let fnote = format!("{path}/{dir_name}.md");
+                if !vault.join(&fnote).is_file() {
+                    let created = vault::create_note(vault, &path, &dir_name)?;
+                    let raw = vault::read_note(vault, &created)?.raw;
+                    vault::save_body(vault, &created, body, &raw)?;
+                    out = created;
+                }
+            }
+            f.proposals.remove(pos);
+            save(vault, &f)?;
+            return Ok(out);
+        }
+        Kind::Rename => {
+            // Kolejka zapisana przed zmianą nazwy, bo zmiana nazwy sama poprawia ścieżki w kolejce.
+            f.proposals.remove(pos);
+            save(vault, &f)?;
+            let (path, _) = crate::ops::rename_folder(vault, idx, &p.note, p.title.as_deref().unwrap_or_default())?;
+            return Ok(path);
+        }
     }
     f.proposals.remove(pos);
     save(vault, &f)?;
@@ -331,7 +463,7 @@ pub fn rename_paths(vault: &Path, moved: &std::collections::HashMap<String, Stri
     let mut f = load(vault)?;
     let mut changed = false;
     for p in &mut f.proposals {
-        if p.kind == Kind::Note {
+        if is_folder_kind(&p.kind) {
             continue;
         }
         if let Some(n) = moved.get(&p.note) {
@@ -349,13 +481,35 @@ pub fn rename_paths(vault: &Path, moved: &std::collections::HashMap<String, Stri
     Ok(())
 }
 
+/// Aktualizuje Foldery w Propozycjach nowych Notatek, Folderów i zmian nazwy po zmianie ścieżki Folderu.
+pub fn rename_folder_paths(vault: &Path, from: &str, to: &str) -> Result<(), String> {
+    if !file_path(vault).exists() {
+        return Ok(());
+    }
+    let mut f = load(vault)?;
+    let mut changed = false;
+    for p in f.proposals.iter_mut().filter(|p| is_folder_kind(&p.kind)) {
+        if p.note == from {
+            p.note = to.to_string();
+            changed = true;
+        } else if let Some(rest) = p.note.strip_prefix(&format!("{from}/")) {
+            p.note = format!("{to}/{rest}");
+            changed = true;
+        }
+    }
+    if changed {
+        save(vault, &f)?;
+    }
+    Ok(())
+}
+
 /// Usuwa z kolejki Propozycje dotyczące Notatek, których już nie ma (np. przeniesionych do Kosza).
 pub fn prune(vault: &Path, idx: &Index) -> Result<usize, String> {
     let mut f = load(vault)?;
     let before = f.proposals.len();
     f.proposals.retain(|p| {
         p.status == Status::Rejected
-            || p.kind == Kind::Note
+            || (is_folder_kind(&p.kind) && (p.kind != Kind::Rename || vault.join(&p.note).is_dir()))
             || (idx.title(&p.note).is_some() && p.target.as_ref().is_none_or(|t| idx.title(t).is_some()))
     });
     let removed = before - f.proposals.len();
@@ -440,6 +594,44 @@ mod tests {
         vault::save_body(&dir, "Projekty/VPN.md", "zmiana użytkownika", &v.raw).unwrap();
         assert!(accept(&dir, &idx, e3).is_err());
         assert_eq!(vault::read_note(&dir, "Projekty/VPN.md").unwrap().body.trim(), "zmiana użytkownika");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn folder_and_rename_proposals() {
+        let dir = std::env::temp_dir().join(format!("nw-prop-folder-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("Projekty/Stare")).unwrap();
+        fs::write(dir.join("Projekty/Stare/A.md"), "a\n").unwrap();
+        fs::write(dir.join("Linki.md"), "[[Projekty/Stare/A]]\n").unwrap();
+
+        assert!(matches!(add_folder(&dir, "Brak", "X", "", "r", "c").unwrap(), Added::NotFound(_)));
+        assert!(matches!(add_folder(&dir, "Projekty", "Stare", "", "r", "c").unwrap(), Added::Invalid(_)));
+        let Added::Added(fid) = add_folder(&dir, "Projekty", "Sieć", "# Sieć\nOpis", "Porządek.", "c").unwrap() else { panic!() };
+        assert_eq!(add_folder(&dir, "Projekty", "Sieć", "", "r", "c").unwrap(), Added::AlreadyPending);
+        let Added::Added(empty) = add_folder(&dir, "", "Pusty", "", "r", "c").unwrap() else { panic!() };
+        // Notatka do Folderu, który dopiero ma powstać.
+        let Added::Added(nid) = add_note(&dir, "Projekty/Sieć", "Router", "x", "r", "c").unwrap() else { panic!() };
+        let Added::Added(r1) = add_rename(&dir, "Projekty/Stare", "Archiwum", "Lepsza nazwa.", "c").unwrap() else { panic!() };
+        let Added::Added(r2) = add_rename(&dir, "Projekty/Stare", "Archiwum 2020", "Lepsza nazwa.", "c").unwrap() else { panic!() };
+        assert!(pending(&dir).unwrap().iter().all(|p| p.id != r1));
+        assert!(matches!(add_rename(&dir, "Projekty/Stare", "Stare", "r", "c").unwrap(), Added::Invalid(_)));
+
+        let idx = Index::build(&dir);
+        assert_eq!(accept(&dir, &idx, fid).unwrap(), "Projekty/Sieć/Sieć.md");
+        assert!(vault::read_note(&dir, "Projekty/Sieć/Sieć.md").unwrap().body.contains("Opis"));
+        assert_eq!(accept(&dir, &idx, empty).unwrap(), "Pusty");
+        assert!(dir.join("Pusty").is_dir());
+
+        // Zmiana nazwy Folderu nadrzędnego przesuwa Propozycje do niego.
+        let Added::Added(sub) = add_folder(&dir, "Projekty/Stare", "Pod", "", "r", "c").unwrap() else { panic!() };
+        assert_eq!(accept(&dir, &idx, r2).unwrap(), "Projekty/Archiwum 2020");
+        assert!(dir.join("Projekty/Archiwum 2020/A.md").is_file());
+        assert_eq!(fs::read_to_string(dir.join("Linki.md")).unwrap(), "[[Projekty/Archiwum 2020/A]]\n");
+        assert_eq!(pending(&dir).unwrap().iter().find(|p| p.id == sub).unwrap().note, "Projekty/Archiwum 2020");
+        assert_eq!(accept(&dir, &idx, sub).unwrap(), "Projekty/Archiwum 2020/Pod");
+        assert_eq!(accept(&dir, &idx, nid).unwrap(), "Projekty/Sieć/Router.md");
+        assert!(pending(&dir).unwrap().is_empty());
         fs::remove_dir_all(&dir).unwrap();
     }
 }

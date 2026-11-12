@@ -107,8 +107,9 @@ export type OpResult = { path: string; fixed: number };
 
 export type Proposal = {
   id: number;
-  /** relation, tag: wpis we frontmatterze; note: nowa Notatka (`note` to Folder); edit: nowa treść Notatki. */
-  kind: "relation" | "tag" | "note" | "edit";
+  /** relation, tag: wpis we frontmatterze; note: nowa Notatka (`note` to Folder); edit: nowa treść Notatki;
+   *  folder: nowy Folder (`note` to Folder nadrzędny, `title` nazwa, `body` Notatka folderu); rename: nowa nazwa Folderu `note`. */
+  kind: "relation" | "tag" | "note" | "edit" | "folder" | "rename";
   note: string;
   target?: string;
   tag?: string;
@@ -135,6 +136,10 @@ export type AcceptResult = {
 };
 
 export const api = {
+  /** Znacznik do dziennika startu (start.log); błędy pomijamy, to tylko diagnostyka. */
+  startMark: (label: string) => {
+    invoke<void>("start_mark", { label }).catch(() => {});
+  },
   proposals: () => invoke<Proposal[]>("list_proposals"),
   acceptProposals: (ids: number[]) => invoke<AcceptResult>("accept_proposals", { ids }),
   rejectProposals: (ids: number[]) => invoke<void>("reject_proposals", { ids }),

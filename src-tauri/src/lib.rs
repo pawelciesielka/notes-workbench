@@ -1,4 +1,5 @@
 mod mcp_setup;
+mod startlog;
 
 use notes_core::index::{self, Index};
 use notes_core::proposals;
@@ -78,9 +79,11 @@ impl AppState {
         let vault = self.vault()?;
         let mut g = self.search.lock().unwrap();
         let s = g.get_or_insert_with(|| {
-            let mut s = Search::new();
-            s.sync(&vault);
-            s
+            startlog::timed("indeks wyszukiwania: budowa od zera", || {
+                let mut s = Search::new();
+                s.sync(&vault);
+                s
+            })
         });
         Ok(f(s, &vault))
     }
@@ -109,7 +112,7 @@ impl AppState {
     fn with_index<T>(&self, f: impl FnOnce(&mut Index, &PathBuf) -> T) -> Result<T, String> {
         let vault = self.vault()?;
         let mut g = self.index.lock().unwrap();
-        let idx = g.get_or_insert_with(|| Index::build(&vault));
+        let idx = g.get_or_insert_with(|| startlog::timed("indeks Notatek: budowa", || Index::build(&vault)));
         Ok(f(idx, &vault))
     }
 
@@ -190,7 +193,9 @@ async fn import_amno(app: AppHandle, export: String, vault: String) -> Result<am
 
 #[tauri::command]
 fn vault_tree(state: State<AppState>, trash: bool) -> Result<Vec<vault::TreeNode>, String> {
-    Ok(vault::tree(&state.vault()?, trash))
+    let v = state.vault()?;
+    let label = if trash { "drzewo Kosza" } else { "drzewo Notatek" };
+    Ok(startlog::timed(label, || vault::tree(&v, trash)))
 }
 
 #[tauri::command]
@@ -202,10 +207,13 @@ fn read_note(state: State<AppState>, path: String) -> Result<vault::NoteData, St
 #[tauri::command]
 async fn vault_index(app: AppHandle, state: State<'_, AppState>, rebuild: bool) -> Result<index::Summary, String> {
     if rebuild {
+        startlog::mark("indeks: przebudowa zaczęta");
         let vault = state.vault()?;
-        let idx = tauri::async_runtime::spawn_blocking(move || Index::build(&vault)).await.map_err(|e| e.to_string())?;
+        let idx = tauri::async_runtime::spawn_blocking(move || startlog::timed("indeks Notatek: przebudowa", || Index::build(&vault)))
+            .await
+            .map_err(|e| e.to_string())?;
         *state.index.lock().unwrap() = Some(idx);
-        state.with_search(|s, v| s.sync(v))?;
+        state.with_search(|s, v| startlog::timed("indeks wyszukiwania: dogonienie zmian", || s.sync(v)))?;
     }
     // Wektory dogonią zmiany w tle (liczy tylko zmienione Notatki).
     start_semantic(&app);
@@ -324,6 +332,7 @@ struct ProposalView {
 #[tauri::command]
 fn list_proposals(state: State<AppState>) -> Result<Vec<ProposalView>, String> {
     let vault = state.vault()?;
+    startlog::mark("Propozycje: wczytywanie");
     state.with_index(|idx, v| {
         proposals::prune(v, idx)?;
         Ok(proposals::pending(&vault)?
@@ -348,22 +357,32 @@ struct AcceptResult {
 
 /// Akceptuje Propozycje (zapis w Notatkach). Błąd jednej nie zatrzymuje pozostałych.
 #[tauri::command]
-fn accept_proposals(state: State<AppState>, ids: Vec<u64>) -> Result<AcceptResult, String> {
+fn accept_proposals(app: AppHandle, state: State<AppState>, ids: Vec<u64>) -> Result<AcceptResult, String> {
     let vault = state.vault()?;
-    let before: std::collections::HashSet<u64> =
-        proposals::pending(&vault)?.into_iter().filter(|p| p.kind == proposals::Kind::Note).map(|p| p.id).collect();
+    let kinds: std::collections::HashMap<u64, proposals::Kind> =
+        proposals::pending(&vault)?.into_iter().map(|p| (p.id, p.kind)).collect();
     let mut res = AcceptResult { done: 0, created: Vec::new(), failed: Vec::new() };
+    let mut folders = false;
     for id in ids {
         match state.with_index(|idx, _| proposals::accept(&vault, idx, id)).and_then(|r| r) {
-            Ok(note) => {
-                state.changed(None, Some(&note))?;
-                if before.contains(&id) {
-                    res.created.push(note);
+            Ok(path) => {
+                match kinds.get(&id) {
+                    // Nowy Folder i zmiana nazwy zmieniają ścieżki: indeks budowany od nowa po wszystkich.
+                    Some(proposals::Kind::Folder | proposals::Kind::Rename) => folders = true,
+                    Some(proposals::Kind::Note) => {
+                        state.changed(None, Some(&path))?;
+                        res.created.push(path);
+                    }
+                    _ => state.changed(None, Some(&path))?,
                 }
                 res.done += 1;
             }
             Err(e) => res.failed.push((id, e)),
         }
+    }
+    if folders {
+        state.reindex()?;
+        start_semantic(&app);
     }
     Ok(res)
 }
@@ -408,6 +427,7 @@ fn restore_note(state: State<AppState>, path: String) -> Result<String, String> 
 
 #[tauri::command]
 fn read_report(state: State<AppState>) -> Result<Option<serde_json::Value>, String> {
+    startlog::mark("raport importu: wczytywanie");
     let p = state.vault()?.join(vault::APP_DIR).join("import").join("raport.json");
     match fs::read_to_string(p) {
         Ok(s) => serde_json::from_str(&s).map(Some).map_err(|e| e.to_string()),
@@ -575,16 +595,33 @@ fn fit_main_window(app: &tauri::App) {
     let _ = win.show();
 }
 
+/// Znacznik z interfejsu (np. „drzewo wyświetlone”) do dziennika startu.
+#[tauri::command]
+fn start_mark(label: String) {
+    startlog::mark(&format!("interfejs: {label}"));
+}
+
 pub fn run() {
+    startlog::begin();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         .setup(|app| {
+            if let Ok(d) = app.path().app_local_data_dir() {
+                startlog::init(d);
+            }
+            startlog::mark("setup: początek");
             fit_main_window(app);
+            startlog::mark("okno pokazane");
             if let Some(p) = settings_path(app.handle()) {
                 if let Ok(s) = fs::read_to_string(p) {
                     if let Ok(s) = serde_json::from_str::<Settings>(&s) {
+                        startlog::mark(&format!(
+                            "ustawienia: Skarbiec {}, wyszukiwanie semantyczne {}",
+                            s.vault.as_deref().unwrap_or("-"),
+                            if s.semantic { "włączone" } else { "wyłączone" }
+                        ));
                         *app.state::<AppState>().settings.lock().unwrap() = s;
                     }
                 }
@@ -593,7 +630,7 @@ pub fn run() {
             // (gdy Claude akurat go używa, kopia zostaje i odświeży się przy następnym uruchomieniu).
             if mcp_setup::server_path().exists() {
                 std::thread::spawn(|| {
-                    let _ = mcp_setup::install_server();
+                    let _ = startlog::timed("kopia serwera MCP: sprawdzenie", mcp_setup::install_server);
                 });
             }
             Ok(())
@@ -619,6 +656,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             add_attachment,
+            start_mark,
             get_vault,
             set_vault,
             import_amno,

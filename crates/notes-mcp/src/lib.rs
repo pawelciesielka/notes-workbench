@@ -160,6 +160,15 @@ impl Server {
         Ok(f)
     }
 
+    /// Folder, który jeszcze nie istnieje, ale czeka jako Propozycja nowego Folderu (w widocznym Folderze nadrzędnym).
+    fn pending_folder(&self, vault: &Path, arg: &str) -> Option<String> {
+        let f = arg.trim().replace('\\', "/");
+        let f = f.trim_matches('/').to_string();
+        let (parent, name) = f.rsplit_once('/').unwrap_or(("", f.as_str()));
+        self.find_folder(vault, parent).ok()?;
+        proposals::folder_pending(vault, parent, name).then_some(f.clone())
+    }
+
     fn call(&mut self, name: &str, args: &Value) -> Result<String, String> {
         let vault = self.sync()?;
         let s = |k: &str| args.get(k).and_then(Value::as_str).unwrap_or("").to_string();
@@ -437,7 +446,7 @@ impl Server {
             "propose_note" | "propose_edit" => {
                 let reason = s("reason");
                 let (label, r) = if name == "propose_note" {
-                    let folder = self.find_folder(&vault, &s("folder"))?;
+                    let folder = self.find_folder(&vault, &s("folder")).or_else(|e| self.pending_folder(&vault, &s("folder")).ok_or(e))?;
                     let title = s("title");
                     let where_ = if folder.is_empty() { "główny poziom Skarbca".to_string() } else { format!("Folder {folder}") };
                     (format!("nowa Notatka „{}” ({where_})", title.trim()), proposals::add_note(&vault, &folder, &title, &s("body"), &reason, SOURCE)?)
@@ -464,6 +473,42 @@ do tego czasu {}.",
                     proposals::Added::NotFound(e) | proposals::Added::Invalid(e) => return Err(e),
                 })
             }
+            "propose_folder" | "propose_folder_rename" => {
+                let reason = s("reason");
+                let name_arg = s("name");
+                let (label, r) = if name == "propose_folder" {
+                    let parent = self.find_folder(&vault, &s("parent"))?;
+                    let where_ = if parent.is_empty() { "główny poziom Skarbca".to_string() } else { format!("w {parent}") };
+                    (
+                        format!("nowy Folder „{}” ({where_})", name_arg.trim()),
+                        proposals::add_folder(&vault, &parent, &name_arg, &s("body"), &reason, SOURCE)?,
+                    )
+                } else {
+                    let folder = self.find_folder(&vault, &s("path"))?;
+                    if folder.is_empty() {
+                        return Err("Podaj Folder (path); głównego poziomu Skarbca nie można przemianować.".into());
+                    }
+                    (
+                        format!("zmiana nazwy Folderu {folder} na „{}”", name_arg.trim()),
+                        proposals::add_rename(&vault, &folder, &name_arg, &reason, SOURCE)?,
+                    )
+                };
+                Ok(match r {
+                    proposals::Added::Added(id) => format!(
+                        "{label}: dodano (id {id}). Czeka na akceptację użytkownika w aplikacji Notes Workbench (widok Propozycje); \
+do tego czasu {}.",
+                        if name == "propose_folder" {
+                            "Folder nie istnieje (Notatki możesz już proponować do niego przez propose_note z folder = ścieżka nowego Folderu)"
+                        } else {
+                            "Folder ma starą nazwę"
+                        }
+                    ),
+                    proposals::Added::AlreadyPending => format!("{label}: pominięto, taka Propozycja już czeka na decyzję."),
+                    proposals::Added::RejectedBefore => format!("{label}: pominięto, użytkownik wcześniej to odrzucił; nie proponuj ponownie."),
+                    proposals::Added::AlreadyLinked => format!("{label}: pominięto."),
+                    proposals::Added::NotFound(e) | proposals::Added::Invalid(e) => return Err(e),
+                })
+            }
             "list_proposals" => {
                 let status = args.get("status").and_then(Value::as_str).unwrap_or("pending");
                 let filter = match args.get("path").and_then(Value::as_str) {
@@ -480,7 +525,11 @@ do tego czasu {}.",
                     })
                     // Propozycje dotyczące Notatek ukrytych przed AI też są ukryte.
                     .filter(|p| !self.noai.contains(&p.note) && p.target.as_ref().is_none_or(|t| !self.noai.contains(t)))
-                    .filter(|p| p.kind != proposals::Kind::Note || self.find_folder(&vault, &p.note).is_ok())
+                    .filter(|p| {
+                        !proposals::is_folder_kind(&p.kind)
+                            || self.find_folder(&vault, &p.note).is_ok()
+                            || self.pending_folder(&vault, &p.note).is_some()
+                    })
                     .filter(|p| filter.as_ref().is_none_or(|f| &p.note == f || p.target.as_ref() == Some(f)))
                     .collect();
                 if shown.is_empty() {
@@ -498,6 +547,12 @@ do tego czasu {}.",
                             if p.note.is_empty() { "głównym poziomie" } else { p.note.as_str() }
                         ),
                         proposals::Kind::Edit => format!("zmiana treści „{}”", t(&p.note)),
+                        proposals::Kind::Folder => format!(
+                            "nowy Folder „{}” w {}",
+                            p.title.as_deref().unwrap_or(""),
+                            if p.note.is_empty() { "głównym poziomie" } else { p.note.as_str() }
+                        ),
+                        proposals::Kind::Rename => format!("zmiana nazwy Folderu {} na „{}”", p.note, p.title.as_deref().unwrap_or("")),
                     };
                     let st = if p.status == proposals::Status::Rejected { " [odrzucona]" } else { "" };
                     out += &format!("- id {}: {what}{st} — {}\n", p.id, p.reason);
@@ -665,6 +720,44 @@ meantime the proposal cannot be applied. A newer edit proposal for the same note
             "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false }
         },
         {
+            "name": "propose_folder",
+            "title": "Zaproponuj nowy Folder",
+            "description": "Propose a NEW folder for organising notes. Nothing is created until the user accepts it in the \
+Notes Workbench app (view Propozycje). 'parent' is an existing folder path from list_notes ('' = top level). \
+Optional 'body' becomes the folder note (a note describing the folder, shown when the folder is opened; Markdown without \
+frontmatter, in Polish). You may immediately propose_note into the new folder using folder = '<parent>/<name>'; \
+accepting such a note also creates the folder. 'reason': one sentence in Polish.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "parent": { "type": "string", "description": "Existing folder path, '' for top level" },
+                    "name": { "type": "string", "description": "Folder name" },
+                    "body": { "type": "string", "description": "Optional folder note body (Markdown, no frontmatter)" },
+                    "reason": { "type": "string", "description": "Why this folder is useful, one sentence in Polish" }
+                },
+                "required": ["parent", "name", "reason"]
+            },
+            "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false }
+        },
+        {
+            "name": "propose_folder_rename",
+            "title": "Zaproponuj zmianę nazwy Folderu",
+            "description": "Propose renaming an existing folder ('path' from list_notes) to 'name'. Applied only after the user \
+accepts it in the app; then the folder note is renamed with it and links that use the folder path are fixed. \
+A newer rename proposal for the same folder replaces the older pending one. To change the folder's description, \
+use propose_edit on its folder note ('<path>/<folder name>.md'). 'reason': one sentence in Polish.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Existing folder path" },
+                    "name": { "type": "string", "description": "New folder name (only the last segment)" },
+                    "reason": { "type": "string" }
+                },
+                "required": ["path", "name", "reason"]
+            },
+            "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false }
+        },
+        {
             "name": "list_proposals",
             "title": "Propozycje",
             "description": "List proposals in the queue: 'pending' (default, waiting for the user), 'rejected' (do not propose again) or 'all'. \
@@ -705,8 +798,8 @@ fn handle(srv: &mut Server, msg: &Value) -> Option<Value> {
                 "capabilities": { "tools": { "listChanged": false } },
                 "serverInfo": { "name": "notes-workbench", "title": "Notes Workbench", "version": env!("CARGO_PKG_VERSION") },
                 "instructions": "Access to the user's personal knowledge base. You never change notes directly: you can propose \
-relations, tags, new notes and text edits (propose_relations, propose_tags, propose_note, propose_edit), which the user \
-accepts or rejects in the Notes Workbench app. \
+relations, tags, new notes, text edits, new folders and folder renames (propose_relations, propose_tags, propose_note, \
+propose_edit, propose_folder, propose_folder_rename), which the user accepts or rejects in the Notes Workbench app. \
 Personal knowledge base (Markdown notes, mostly in Polish). \
 Start with search_notes, then read_note for full text. Notes link to each other with [[links]] and #tags; \
 use note_links to follow the knowledge graph. Cite note titles when you use their content. \

@@ -3,6 +3,9 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./styles.css";
 import { applyStoredTheme } from "./lib/theme";
+import { api } from "./lib/api";
+
+api.startMark(`skrypt uruchomiony (${Math.round(performance.now())} ms od otwarcia strony)`);
 
 applyStoredTheme();
 
