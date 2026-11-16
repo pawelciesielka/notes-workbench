@@ -30,6 +30,32 @@ const tree = [
   { name: "Pomysły", path: "Pomysły.md", kind: "note", title: "Pomysły", order: 4, folder_note: null, modified: null, children: [] },
 ];
 
+type MockNode = { name: string; path: string; kind: string; title: string; order: number | null; folder_note: string | null; modified: number | null; children: MockNode[] };
+
+/** Zawartość Folderu `folder` (`""` to korzeń) w podglądowym drzewie. */
+function levelOf(folder: string): MockNode[] {
+  if (!folder) return tree as MockNode[];
+  let list = tree as MockNode[];
+  const parts = folder.split("/");
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts.slice(0, i + 1).join("/");
+    const f = list.find((n) => n.path === p);
+    if (!f) throw new Error(`Podgląd: nie ma Folderu ${p}`);
+    list = f.children;
+  }
+  return list;
+}
+
+/** Nowy węzeł na końcu Folderu (jak w backendzie); zwraca jego ścieżkę. */
+function add(folder: string, base: string, kind: "note" | "folder"): string {
+  const list = levelOf(folder);
+  let name = base;
+  for (let i = 2; list.some((n) => n.name === name); i++) name = `${base} ${i}`;
+  const path = `${folder ? `${folder}/` : ""}${name}${kind === "note" ? ".md" : ""}`;
+  list.push({ name, path, kind, title: name, order: null, folder_note: null, modified: Date.now(), children: [] });
+  return path;
+}
+
 const body = `Krótka instrukcja wdrożenia aplikacji jako **usługi systemd** w Ubuntu. Zobacz też [[Router domowy]] i [[Nieistniejąca notatka]]. #linux #admin
 
 ## Plik usługi
@@ -84,7 +110,7 @@ const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
   },
   get_vault: () => "C:\\Notatki",
   set_vault: () => null,
-  vault_tree: (a) => (a.trash ? [] : tree),
+  vault_tree: (a) => (a.trash ? [] : structuredClone(tree)),
   vault_index: () => ({
     notes,
     tags: [
@@ -153,7 +179,18 @@ const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
   similar_notes: () => [{ path: "Przykłady/Monitoring/grafana.md", title: "Grafana – dashboardy", stem: "" }],
   semantic_activate: () => undefined,
   move_note: (a) => ({ path: `${a.folder ? `${a.folder}/` : ""}${String(a.path).split("/").pop()}`, fixed: 0 }),
-  set_position: () => undefined,
+  set_position: (a) => {
+    const path = String(a.path);
+    const list = levelOf(path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
+    const i = list.findIndex((n) => n.path === path);
+    if (i < 0) throw new Error(`Podgląd: nie ma ${path}`);
+    const [item] = list.splice(i, 1);
+    const at = a.before == null ? list.length : list.findIndex((n) => n.path === a.before);
+    list.splice(at < 0 ? list.length : at, 0, item);
+    return undefined;
+  },
+  create_note: (a) => add(String(a.folder), "Nowa Notatka", "note"),
+  create_folder: (a) => add(String(a.parent), String(a.name || "Nowy Folder"), "folder"),
   move_folder: (a) => ({ path: `${a.parent ? `${a.parent}/` : ""}${String(a.path).split("/").pop()}`, fixed: 0 }),
   semantic_status: () => ({ enabled: false, model_ready: false, running: false, phase: "", done: 0, total: 0, notes: 0, error: null, model: "multilingual-e5-small", model_mb: 470 }),
   search_notes: () => ({

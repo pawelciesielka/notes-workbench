@@ -62,11 +62,41 @@ function countNotes(nodes: TreeNode[]): number {
   return nodes.reduce((n, x) => n + (x.kind === "note" ? 1 : 0) + (x.folder_note ? 1 : 0) + countNotes(x.children), 0);
 }
 
+/** Węzeł o ścieżce `path` (dla Notatki folderu: jej Folder) i lista, w której leży. */
+function findNode(nodes: TreeNode[], path: string): { node: TreeNode; siblings: TreeNode[] } | null {
+  for (const n of nodes) {
+    if (n.path === path || n.folder_note === path) return { node: n, siblings: nodes };
+    if (n.kind === "folder" && path.startsWith(n.path + "/")) {
+      const r = findNode(n.children, path);
+      if (r) return r;
+    }
+  }
+  return null;
+}
+
+/**
+ * Gdzie wstawić nowy element obok zaznaczenia `anchor`: Folder (także przez jego Notatkę folderu) dostaje go
+ * jako pierwszą pozycję, a obok Notatki ląduje on na tym samym poziomie, zaraz pod nią. `before` jak w `setPosition`.
+ */
+type Place = { folder: string; before?: string | null };
+function placeNear(tree: TreeNode[], anchor: string | null): Place {
+  const hit = anchor && !anchor.startsWith(".kosz/") ? findNode(tree, anchor) : null;
+  if (!hit) return { folder: "" };
+  const { node, siblings } = hit;
+  if (node.kind === "folder") return { folder: node.path, before: node.children[0]?.path ?? null };
+  const i = siblings.indexOf(node);
+  return { folder: folderOf(node.path), before: siblings[i + 1]?.path ?? null };
+}
+
 export default function App() {
   const [vault, setVault] = useState<string | null | undefined>(undefined);
   const [side, setSide] = useState<Side>("notes");
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [trashTree, setTrashTree] = useState<TreeNode[]>([]);
+  /** Wiersz zaznaczony w drzewie Notatek; `null`, gdy zaznaczeniem jest otwarta Notatka. */
+  const [treeFocus, setTreeFocus] = useState<string | null>(null);
+  /** Węzeł do pokazania w drzewie (świeżo utworzony). */
+  const [reveal, setReveal] = useState<{ path: string; key: number } | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [tag, setTag] = useState<string | null>(null);
   const [main, setMain] = useState<Main>({ kind: "empty" });
@@ -164,34 +194,32 @@ export default function App() {
     [loadTrees],
   );
 
-  const newNote = async () => {
-    const current = main.kind === "note" && !main.path.startsWith(".kosz/") ? main.path : null;
-    try {
-      const p = await api.createNote(current ? folderOf(current) : "", "");
-      onChanged(true);
-      openNote(p, true);
-    } catch (e) {
-      setError(String(e));
-    }
+  /** Zaznaczenie, obok którego powstają nowe elementy: wiersz wybrany w drzewie albo otwarta Notatka. */
+  const anchor = treeFocus ?? (main.kind === "note" && !main.path.startsWith(".kosz/") ? main.path : null);
+  const place = placeNear(tree, anchor);
+  const placeLabel = (pl: Place) => (pl.folder ? `„${pl.folder.replace(/\//g, " / ")}”` : "głównym poziomie Skarbca");
+
+  /** Tworzy Notatkę albo Folder w miejscu `pl`, odświeża drzewo i pokazuje w nim nowy element. */
+  const createAt = async (pl: Place, kind: "note" | "folder", name = "") => {
+    const p = kind === "note" ? await api.createNote(pl.folder, "") : await api.createFolder(pl.folder, name);
+    if (pl.before !== undefined) await api.setPosition(p, pl.before).catch((e) => setError(String(e)));
+    api.index(false).then(setSummary).catch(() => {});
+    await loadTrees().catch((e) => setError(String(e)));
+    if (kind === "note") openNote(p, true);
+    else setReveal({ path: p, key: Date.now() });
   };
 
-  /** Folder bieżącej Notatki (dla Notatki folderu: sam Folder); `""` to główny poziom Skarbca. */
-  const currentFolder = main.kind === "note" && !main.path.startsWith(".kosz/") ? folderOf(main.path) : "";
+  const newNote = (pl: Place = place) => run(() => createAt(pl, "note"));
 
-  const newFolder = () =>
+  const newFolder = (pl: Place = place) =>
     setDialog(
       <PromptDialog
-        title={currentFolder ? `Nowy Folder w „${currentFolder.replace(/\//g, " / ")}”` : "Nowy Folder"}
+        title={pl.folder ? `Nowy Folder w ${placeLabel(pl)}` : "Nowy Folder"}
         label="Nazwa"
         initial="Nowy Folder"
         okLabel="Utwórz"
         onClose={closeDialog}
-        onOk={(name) =>
-          run(async () => {
-            await api.createFolder(currentFolder, name);
-            onChanged(true);
-          })
-        }
+        onOk={(name) => run(() => createAt(pl, "folder", name))}
       />,
     );
 
@@ -287,12 +315,12 @@ export default function App() {
       {
         label: "Nowa Notatka obok",
         icon: <PlusIcon size={15} />,
-        onClick: () =>
-          run(async () => {
-            const p = await api.createNote(folderOf(n.path), "");
-            onChanged(true);
-            openNote(p, true);
-          }),
+        onClick: () => newNote(placeNear(tree, n.path)),
+      },
+      {
+        label: "Nowy Folder obok…",
+        icon: <FolderIcon size={15} />,
+        onClick: () => newFolder(placeNear(tree, n.path)),
       },
       {
         label: "Przenieś do Folderu…",
@@ -369,32 +397,12 @@ export default function App() {
       {
         label: "Nowa Notatka w tym Folderze",
         icon: <PlusIcon size={15} />,
-        onClick: () =>
-          run(async () => {
-            const p = await api.createNote(n.path, "");
-            onChanged(true);
-            openNote(p, true);
-          }),
+        onClick: () => newNote(placeNear(tree, n.path)),
       },
       {
         label: "Nowy Folder…",
         icon: <FolderIcon size={15} />,
-        onClick: () =>
-          setDialog(
-            <PromptDialog
-              title={`Nowy Folder w „${n.title}”`}
-              label="Nazwa"
-              initial="Nowy Folder"
-              okLabel="Utwórz"
-              onClose={closeDialog}
-              onOk={(name) =>
-                run(async () => {
-                  await api.createFolder(n.path, name);
-                  onChanged(true);
-                })
-              }
-            />,
-          ),
+        onClick: () => newFolder(placeNear(tree, n.path)),
       },
       {
         label: "Zmień nazwę…",
@@ -634,15 +642,15 @@ export default function App() {
           <button
             className="primary new-note"
             onClick={() => void newNote()}
-            title="Nowa Notatka w Folderze bieżącej Notatki"
+            title={`Nowa Notatka w ${placeLabel(place)}${place.before !== undefined ? " (obok zaznaczenia)" : ""}`}
             aria-label="Nowa Notatka"
           >
             <FilePlusIcon />
           </button>
           <button
             className="icon-btn"
-            onClick={newFolder}
-            title={`Nowy Folder w ${currentFolder ? `„${currentFolder}”` : "głównym poziomie Skarbca"}`}
+            onClick={() => newFolder()}
+            title={`Nowy Folder w ${placeLabel(place)}${place.before !== undefined ? " (obok zaznaczenia)" : ""}`}
             aria-label="Nowy Folder"
           >
             <FolderPlusIcon />
@@ -705,6 +713,8 @@ export default function App() {
             onOpen={openNote}
             onMenu={onTreeMenu}
             onMove={side === "trash" ? undefined : onTreeMove}
+            onFocusChange={side === "trash" ? undefined : setTreeFocus}
+            reveal={side === "trash" ? null : reveal}
             sort={side === "trash" ? undefined : treeSort.sort}
             onSort={side === "trash" ? undefined : treeSort.setSort}
           />

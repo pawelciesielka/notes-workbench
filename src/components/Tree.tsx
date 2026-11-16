@@ -122,6 +122,10 @@ type Props = {
    * (przed tą ścieżką, `null` na końcu); bez niego tylko przeniesienie. Bez `onMove` drzewo nie pozwala przeciągać.
    */
   onMove?: (node: TreeNode, folder: string, before?: string | null) => void;
+  /** Wiersz zaznaczony w drzewie (kliknięty albo wybrany klawiaturą); `null`, gdy zaznaczenie to otwarta Notatka. */
+  onFocusChange?: (path: string | null) => void;
+  /** Pokaż i zaznacz ten węzeł (np. świeżo utworzony Folder); `key` pozwala powtórzyć prośbę o tę samą ścieżkę. */
+  reveal?: { path: string; key: number } | null;
 };
 
 function parentOf(path: string): string {
@@ -140,12 +144,16 @@ const DRAG_PX = 5;
 const EXPAND_MS = 600;
 /** Część wysokości wiersza Folderu przy górnej i dolnej krawędzi, która znaczy „przed / za”, a nie „do środka”. */
 const EDGE = 0.28;
+/** Pas przy górnej i dolnej krawędzi listy (px), w którym przeciąganie przewija drzewo. */
+const SCROLL_ZONE = 36;
+/** Największa prędkość przewijania w trakcie przeciągania (px na klatkę). */
+const SCROLL_MAX = 18;
 
 /** Miejsce upuszczenia: do Folderu albo przed / za wierszem `row` (zmiana Kolejności). */
 type Target = { folder: string; before?: string | null; row: string | null; edge: "into" | "top" | "bottom" };
 type Drag = { node: TreeNode; x: number; y: number; target: Target | null };
 
-export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMove }: Props) {
+export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMove, onFocusChange, reveal }: Props) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const justDragged = useRef(false);
   const [sortMenu, setSortMenu] = useState<{ folder: string; x: number; y: number } | null>(null);
@@ -209,6 +217,28 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMo
     }, 30);
     return () => window.clearTimeout(t);
   }, [selected]);
+
+  useEffect(() => {
+    onFocusChange?.(focus);
+  }, [focus, onFocusChange]);
+
+  // Prośba o pokazanie węzła (np. nowo utworzonego): rozwijamy drogę, zaznaczamy i przewijamy, gdy wiersz już jest.
+  const revealed = useRef<number | null>(null);
+  useEffect(() => {
+    if (!reveal || revealed.current === reveal.key) return;
+    const el = listRef.current?.querySelector(`[data-path="${CSS.escape(reveal.path)}"]`);
+    setExpanded((prev) => {
+      const need = ancestors(reveal.path).filter((a) => !prev.has(a));
+      if (!need.length) return prev;
+      const next = new Set(prev);
+      need.forEach((a) => next.add(a));
+      return next;
+    });
+    if (!el) return; // Wiersza jeszcze nie ma (drzewo się wczytuje albo rozwija): spróbujemy po następnym renderze.
+    revealed.current = reveal.key;
+    setFocus(reveal.path);
+    el.scrollIntoView({ block: "nearest" });
+  });
 
   // Wiersze w kolejności wyświetlania (do nawigacji klawiaturą).
   const rows = useMemo(() => {
@@ -290,6 +320,10 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMo
     return at(parent, nextOf.get(path) ?? null, path, "bottom");
   };
 
+  // Przeciąganie trwa dłużej niż jeden render: zawsze sięgamy po aktualne mapy sąsiadów (Foldery się rozwijają).
+  const targetRef = useRef(targetAt);
+  targetRef.current = targetAt;
+
   /** Wiersz pod kursorem (do rozwijania zwiniętych Folderów w trakcie przeciągania). */
   const rowAt = (x: number, y: number) => {
     const el = document.elementFromPoint(x, y);
@@ -303,27 +337,66 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMo
     const sy = e.clientY;
     let active = false;
     let hover: { path: string; timer: number } | null = null;
+    let pos = { x: sx, y: sy };
+    let frame = 0;
+    let lastTop = -1;
     const clearHover = () => {
       if (hover) window.clearTimeout(hover.timer);
       hover = null;
+    };
+    const update = () => {
+      const { x, y } = pos;
+      const target = targetRef.current(node, x, y);
+      // Zwinięty Folder, na który celujemy „do środka”, rozwijamy po chwili, żeby dało się upuścić głębiej.
+      const row = rowAt(x, y);
+      const over = target?.edge === "into" && row?.dataset.kind === "folder" && row.dataset.open !== "1" ? row.dataset.path! : null;
+      if (over !== hover?.path) {
+        clearHover();
+        if (over) hover = { path: over, timer: window.setTimeout(() => toggle(over, true), EXPAND_MS) };
+      }
+      setDrag({ node, x, y, target });
+    };
+    // Kursor przy górnej albo dolnej krawędzi listy (lub poza nią): lista sama się przewija, im bliżej brzegu, tym szybciej.
+    const tick = () => {
+      frame = 0;
+      const list = listRef.current;
+      if (!active || !list) return;
+      const b = list.getBoundingClientRect();
+      const inX = pos.x >= b.left - 40 && pos.x <= b.right + 40;
+      let dy = 0;
+      if (inX && pos.y < b.top + SCROLL_ZONE) dy = -Math.min(SCROLL_MAX, Math.ceil(((b.top + SCROLL_ZONE - pos.y) / SCROLL_ZONE) * SCROLL_MAX * 0.6));
+      else if (inX && pos.y > b.bottom - SCROLL_ZONE)
+        dy = Math.min(SCROLL_MAX, Math.ceil(((pos.y - (b.bottom - SCROLL_ZONE)) / SCROLL_ZONE) * SCROLL_MAX * 0.6));
+      if (dy) list.scrollTop += dy;
+      // Lista przewinęła się (sama albo kółkiem myszy): pod nieruchomym kursorem jest inny wiersz.
+      if (list.scrollTop !== lastTop) {
+        lastTop = list.scrollTop;
+        update();
+      }
+      if (dy) frame = requestAnimationFrame(tick);
     };
     const move = (ev: MouseEvent) => {
       if (!active) {
         if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < DRAG_PX) return;
         active = true;
         document.body.classList.add("tree-dragging");
+        lastTop = listRef.current?.scrollTop ?? -1;
       }
-      const target = targetAt(node, ev.clientX, ev.clientY);
-      // Zwinięty Folder, na który celujemy „do środka”, rozwijamy po chwili, żeby dało się upuścić głębiej.
-      const row = rowAt(ev.clientX, ev.clientY);
-      const over = target?.edge === "into" && row?.dataset.kind === "folder" && row.dataset.open !== "1" ? row.dataset.path! : null;
-      if (over !== hover?.path) {
-        clearHover();
-        if (over) hover = { path: over, timer: window.setTimeout(() => toggle(over, true), EXPAND_MS) };
-      }
-      setDrag({ node, x: ev.clientX, y: ev.clientY, target });
+      pos = { x: ev.clientX, y: ev.clientY };
+      update();
+      if (!frame) frame = requestAnimationFrame(tick);
+    };
+    // Przewinięcie kółkiem myszy w trakcie przeciągania: cel pod kursorem trzeba wyznaczyć na nowo.
+    const list = listRef.current;
+    const scrolled = () => {
+      if (!active || !list || list.scrollTop === lastTop) return;
+      lastTop = list.scrollTop;
+      update();
     };
     const end = (ev: MouseEvent | null) => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      list?.removeEventListener("scroll", scrolled);
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
       window.removeEventListener("keydown", key, true);
@@ -334,7 +407,7 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMo
       // Kliknięcie, które przyjdzie zaraz po puszczeniu przycisku, nie otwiera Notatki.
       justDragged.current = true;
       window.setTimeout(() => (justDragged.current = false), 0);
-      const t = ev ? targetAt(node, ev.clientX, ev.clientY) : null;
+      const t = ev ? targetRef.current(node, ev.clientX, ev.clientY) : null;
       if (t) onMove(node, t.folder, t.before);
     };
     const up = (ev: MouseEvent) => end(ev);
@@ -345,6 +418,7 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMo
       end(null);
     };
     window.addEventListener("mousemove", move);
+    list?.addEventListener("scroll", scrolled);
     window.addEventListener("mouseup", up);
     window.addEventListener("keydown", key, true);
   };
