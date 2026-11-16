@@ -163,6 +163,8 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMo
     setSortMenu({ folder, x: b.left, y: b.bottom + 2 });
   };
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  /** Foldery zwinięte ręcznie w trakcie filtrowania (filtr rozwija wszystko; nowy filtr zaczyna od zera). */
+  const [shut, setShut] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<string | null>(null);
   const [age, setAgeState] = useState(loadAge);
@@ -172,6 +174,27 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMo
   const since = age > 0 ? Math.floor(Date.now() / 60_000) * 60_000 - AGES[age].days * DAY : 0;
   // Filtr aktywny: Foldery rozwinięte, żeby było widać pasujące Notatki.
   const filtering = q !== "" || since > 0;
+  const filteringRef = useRef(filtering);
+  filteringRef.current = filtering;
+  useEffect(() => setShut(new Set()), [q, age]);
+  const isOpenPath = (path: string) => (filtering ? !shut.has(path) : expanded.has(path));
+  /** Rozwija Foldery nad `path` (w zwykłym widoku i w trakcie filtrowania). */
+  const openAncestors = (path: string) => {
+    const up = ancestors(path);
+    setExpanded((prev) => {
+      const need = up.filter((a) => !prev.has(a));
+      if (!need.length) return prev;
+      const next = new Set(prev);
+      need.forEach((a) => next.add(a));
+      return next;
+    });
+    setShut((prev) => {
+      if (!up.some((a) => prev.has(a))) return prev;
+      const next = new Set(prev);
+      up.forEach((a) => next.delete(a));
+      return next;
+    });
+  };
   const setAge = (v: number) => {
     setAgeState(v);
     try {
@@ -204,13 +227,7 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMo
   // Notatka otwarta z wyszukiwania, grafu albo Linku: rozwijamy drogę do niej i przewijamy.
   useEffect(() => {
     if (!selected) return;
-    setExpanded((prev) => {
-      const need = ancestors(selected).filter((a) => !prev.has(a));
-      if (!need.length) return prev;
-      const next = new Set(prev);
-      need.forEach((a) => next.add(a));
-      return next;
-    });
+    openAncestors(selected);
     setFocus(null);
     const t = window.setTimeout(() => {
       listRef.current?.querySelector(".tree-row.active")?.scrollIntoView({ block: "nearest" });
@@ -227,13 +244,7 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMo
   useEffect(() => {
     if (!reveal || revealed.current === reveal.key) return;
     const el = listRef.current?.querySelector(`[data-path="${CSS.escape(reveal.path)}"]`);
-    setExpanded((prev) => {
-      const need = ancestors(reveal.path).filter((a) => !prev.has(a));
-      if (!need.length) return prev;
-      const next = new Set(prev);
-      need.forEach((a) => next.add(a));
-      return next;
-    });
+    openAncestors(reveal.path);
     if (!el) return; // Wiersza jeszcze nie ma (drzewo się wczytuje albo rozwija): spróbujemy po następnym renderze.
     revealed.current = reveal.key;
     setFocus(reveal.path);
@@ -245,16 +256,25 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMo
     const out: Row[] = [];
     const walk = (list: TreeNode[], depth: number) =>
       list.forEach((n) => {
-        const open = n.kind === "folder" && (filtering || expanded.has(n.path));
+        const open = n.kind === "folder" && (filtering ? !shut.has(n.path) : expanded.has(n.path));
         out.push({ node: n, depth, open });
         if (open) walk(n.children, depth + 1);
       });
     walk(visible, 0);
     return out;
-  }, [visible, expanded, filtering]);
+  }, [visible, expanded, shut, filtering]);
 
   const toggle = (path: string, open?: boolean) =>
-    setExpanded((prev) => {
+    // W trakcie filtrowania Foldery są otwarte, dopóki ich nie zwiniesz: przełączamy listę zwiniętych.
+    filteringRef.current
+      ? setShut((prev) => {
+          const next = new Set(prev);
+          const want = open ?? next.has(path);
+          if (want) next.delete(path);
+          else next.add(path);
+          return next;
+        })
+      : setExpanded((prev) => {
       const next = new Set(prev);
       const want = open ?? !next.has(path);
       if (want) next.add(path);
@@ -483,7 +503,7 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMo
       const mode = isFolderNode(n) ? modeOf(n.path) : "order";
       const SortIcon = SORT_ICONS[mode];
       const isFolder = n.kind === "folder";
-      const isOpen = isFolder && (filtering || expanded.has(n.path));
+      const isOpen = isFolder && isOpenPath(n.path);
       const locked = !!noai && (noai.has(n.path) || (n.folder_note !== null && noai.has(n.folder_note)));
       const cls = [
         "tree-row",
@@ -585,7 +605,14 @@ export function Tree({ nodes, selected, noai, onOpen, onMenu, sort, onSort, onMo
           className="icon-btn"
           title="Zwiń wszystkie Foldery"
           aria-label="Zwiń wszystkie Foldery"
-          onClick={() => setExpanded(new Set())}
+          onClick={() => {
+            setExpanded(new Set());
+            if (!filtering) return;
+            const all = new Set<string>();
+            const walk = (list: TreeNode[]) => list.forEach((n) => n.kind === "folder" && (all.add(n.path), walk(n.children)));
+            walk(visible);
+            setShut(all);
+          }}
         >
           <CollapseIcon size={15} />
         </button>
