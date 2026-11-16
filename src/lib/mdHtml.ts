@@ -243,6 +243,11 @@ function turndown(): TurndownService {
       return css && c ? `<span style="${css}">${c}</span>` : c;
     },
   });
+  // Obraz nie może być kodem w Markdownie: kod z obrazem w środku zapisujemy bez znaczników kodu, żeby obraz przetrwał.
+  td.addRule("codeWithImage", {
+    filter: (n) => n.nodeName === "CODE" && n.parentNode?.nodeName !== "PRE" && !!(n as HTMLElement).querySelector("img"),
+    replacement: (c) => c,
+  });
   td.addRule("mark", { filter: ["mark"], replacement: (c) => (c ? `<mark>${c}</mark>` : "") });
   td.addRule("alignedParagraph", {
     filter: (n) => n.nodeName === "P" && !!(n as HTMLElement).style.textAlign && (n as HTMLElement).style.textAlign !== "left",

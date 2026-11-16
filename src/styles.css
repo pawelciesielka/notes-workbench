@@ -2224,6 +2224,10 @@ body.tree-dragging * {
 .ve-content {
   flex: 1;
   min-height: 0;
+  /* Klasa .markdown daje margin: auto, które w kolumnie flex zwęża treść do jej szerokości i ją środkuje. */
+  max-width: none;
+  margin: 0;
+  align-self: stretch;
   overflow: auto;
   padding: 14px 22px 40px;
 }

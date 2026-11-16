@@ -5,6 +5,7 @@ import { Extension, type Range } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
+import Code from "@tiptap/extension-code";
 import { TableKit, TableCell, TableHeader } from "@tiptap/extension-table";
 import { TextStyle, Color, BackgroundColor } from "@tiptap/extension-text-style";
 import { TextAlign } from "@tiptap/extension-text-align";
@@ -367,7 +368,9 @@ export function VisualEditor({ value, notePath, summary, onChange, onSave, onFil
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ link: { openOnClick: false, autolink: true } }),
+      StarterKit.configure({ link: { openOnClick: false, autolink: true }, code: false }),
+      // Ctrl+E przełącza Edycję i podgląd Notatki; TipTap zaznaczony tekst zamieniał przy tym w kod (razem z obrazami).
+      Code.extend({ addKeyboardShortcuts: () => ({}) }),
       TextStyle,
       Color,
       BackgroundColor,
