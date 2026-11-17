@@ -7,5 +7,13 @@ fn main() {
         notes_mcp::serve(std::env::args().skip(1));
         return;
     }
-    notes_workbench_lib::run()
+    // `--daily-brief`: start z Harmonogramu zadań (logowanie, odblokowanie). Okno tylko przy pierwszym wejściu
+    // danego dnia, gdy jest dzisiejszy brief; inaczej proces kończy się od razu, bez okna.
+    if std::env::args().nth(1).as_deref() == Some(notes_workbench_lib::BRIEF_ARG) {
+        if notes_workbench_lib::brief_should_show() {
+            notes_workbench_lib::run(true);
+        }
+        return;
+    }
+    notes_workbench_lib::run(false)
 }

@@ -210,6 +210,84 @@ const handlers: Record<string, (a: Record<string, unknown>) => unknown> = {
   }),
 };
 
+const today = new Date().toISOString().slice(0, 10);
+const briefMd = `# Brief spotkań — wtorek, 17 listopada 2026
+
+**4 spotkania.** Brief wygenerowany o 7:02. Najważniejszy punkt dnia to **15:00 Spotkanie w biurze**, które nie ma agendy.
+
+Założenia: sprawdziłem tylko kalendarz główny.
+
+---
+
+## 08:00–09:00 (60 min) · Alab Doktor — odbyło się
+Google Meet: https://meet.google.com/xxx-yyyy-zzz
+
+**Uczestnicy:** Maciej (COO) — zaakceptował; Artur (ALAB) — zaakceptował.
+
+**Agenda:** brak agendy w zaproszeniu. Prawdopodobnie: zakres produktu.
+
+**Do zrobienia po spotkaniu:** spisać ustalenia i następny krok.
+
+---
+
+## 10:00–10:30 (30 min) · BioStand-up — odbyło się (udział opcjonalny)
+Google Meet: https://meet.google.com/crr
+
+**Agenda:** co zrobione wczoraj, plan na dziś, blokery. **Kontekst:** brak maili.
+
+---
+
+## 15:00–16:30 (90 min) · Spotkanie w biurze (projekt call center) — PRZED TOBĄ
+Biuro (Srebrna 16) / Google Meet: https://meet.google.com/ibt
+
+**Uczestnicy:** Maciej (organizator) — zaakceptował; Paweł D. — **odrzucił**.
+
+**Agenda:** brak agendy w zaproszeniu.
+
+**Do przygotowania:**
+- Dopytać Macieja przed 15:00, jaki jest cel spotkania.
+- Odpowiedzieć na zaproszenie.
+
+---
+
+## 23:00–23:30 (30 min) · Późny call — PRZED TOBĄ
+Teams
+
+**Agenda:** przegląd tygodnia.
+
+---
+
+## Konflikty i uwagi
+- **Nakładanie się rano:** Alab Doktor kolidował z daily.
+- **Brak Twoich odpowiedzi** na zaproszenia: call center.
+`;
+let briefCfg = { dir: String.raw`C:\Dane\Notatki\Dziennik\Daily_brief` as string | null, autostart: false };
+let briefSeen = false;
+Object.assign(handlers, {
+  app_mode: () => (new URLSearchParams(location.search).has("brief") ? "brief" : "main"),
+  brief_config: () => briefCfg,
+  set_brief_dir: (a: Record<string, unknown>) => {
+    briefCfg = { ...briefCfg, dir: (a.dir as string | null) ?? null };
+    return null;
+  },
+  set_brief_autostart: (a: Record<string, unknown>) => {
+    briefCfg = { ...briefCfg, autostart: !!a.on };
+    return briefCfg.autostart;
+  },
+  brief_today: () =>
+    briefCfg.dir
+      ? { name: `Brief spotkań ${today}.md`, file: `${briefCfg.dir}\\Brief spotkań ${today}.md`, note: `Dziennik/Daily_brief/Brief spotkań ${today}.md`, content: briefMd, modified: Date.now() - 3 * H }
+      : null,
+  brief_seen: () => briefSeen,
+  brief_mark_seen: () => {
+    briefSeen = true;
+    return null;
+  },
+  brief_open_main: () => null,
+  brief_open_file: () => null,
+  brief_close: () => null,
+});
+
 export async function mockInvoke<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const h = handlers[cmd];
   if (!h) throw new Error(`Podgląd: brak danych dla ${cmd}`);

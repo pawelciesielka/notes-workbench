@@ -135,7 +135,31 @@ export type AcceptResult = {
   failed: [number, string][];
 };
 
+/** Plik Daily brief z dzisiejszą datą w nazwie. */
+export type Brief = {
+  name: string;
+  /** Pełna ścieżka na dysku. */
+  file: string;
+  /** Ścieżka w Skarbcu, gdy brief w nim leży. */
+  note: string | null;
+  content: string;
+  modified: number | null;
+};
+export type BriefConfig = { dir: string | null; autostart: boolean };
+
 export const api = {
+  /** `brief`: okno uruchomione z Harmonogramu zadań pokazuje sam Daily brief. */
+  appMode: () => invoke<"brief" | "main">("app_mode"),
+  briefConfig: () => invoke<BriefConfig>("brief_config"),
+  setBriefDir: (dir: string | null) => invoke<void>("set_brief_dir", { dir }),
+  /** Zwraca, czy zadanie Harmonogramu jest teraz zarejestrowane. */
+  setBriefAutostart: (on: boolean) => invoke<boolean>("set_brief_autostart", { on }),
+  briefToday: () => invoke<Brief | null>("brief_today"),
+  briefSeen: () => invoke<boolean>("brief_seen"),
+  briefMarkSeen: () => invoke<void>("brief_mark_seen"),
+  briefOpenMain: () => invoke<void>("brief_open_main"),
+  briefOpenFile: (file: string) => invoke<void>("brief_open_file", { file }),
+  briefClose: () => invoke<void>("brief_close"),
   /** Znacznik do dziennika startu (start.log); błędy pomijamy, to tylko diagnostyka. */
   startMark: (label: string) => {
     invoke<void>("start_mark", { label }).catch(() => {});

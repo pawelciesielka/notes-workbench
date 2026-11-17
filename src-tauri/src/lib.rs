@@ -1,3 +1,4 @@
+mod brief;
 mod mcp_setup;
 mod startlog;
 
@@ -20,6 +21,9 @@ struct Settings {
     /// Użytkownik włączył wyszukiwanie semantyczne (i zgodził się na pobranie modelu).
     #[serde(default)]
     semantic: bool,
+    /// Folder z plikami Daily brief (Markdown z datą w nazwie).
+    #[serde(default)]
+    brief_dir: Option<String>,
 }
 
 #[derive(Default)]
@@ -32,6 +36,8 @@ struct AppState {
     sem_again: AtomicBool,
     /// Użytkownik wszedł w Szukaj w tej sesji: dopiero wtedy wczytujemy model (kilkaset MB pamięci).
     sem_wanted: AtomicBool,
+    /// Uruchomienie z Harmonogramu (`--daily-brief`): okno pokazuje sam brief, dopóki użytkownik nie otworzy aplikacji.
+    brief_mode: AtomicBool,
 }
 
 /// Uruchamia w tle liczenie wektorów (jeśli włączone); gdy już trwa, zleca ponowny przebieg po nim.
@@ -588,7 +594,7 @@ fn open_link(app: AppHandle, url: String) -> Result<(), String> {
 /// Dopasowuje okno główne do obszaru roboczego monitora (bez paska zadań) i ustawia je na środku.
 /// Domyślny rozmiar z konfiguracji (1400×900) na ekranie ze skalowaniem bywa wyższy niż ekran,
 /// a wtedy dół okna chowa się pod paskiem zadań.
-fn fit_main_window(app: &tauri::App) {
+fn fit_main_window(app: &AppHandle) {
     let Some(win) = app.get_webview_window("main") else { return };
     let monitor = win.current_monitor().ok().flatten().or_else(|| win.primary_monitor().ok().flatten());
     if let Some(m) = monitor {
@@ -618,13 +624,124 @@ fn fit_main_window(app: &tauri::App) {
     let _ = win.show();
 }
 
+
+// ===== Daily brief =====
+
+/// Okno briefu: mniejsze niż główne, na środku ekranu, na wierzchu przy starcie (żeby nie zginęło pod innymi).
+fn show_brief_window(app: &AppHandle) {
+    let Some(win) = app.get_webview_window("main") else { return };
+    let _ = win.set_title("Daily brief – Notes Workbench");
+    if let Some(m) = win.current_monitor().ok().flatten().or_else(|| win.primary_monitor().ok().flatten()) {
+        let area = m.work_area();
+        let scale = m.scale_factor();
+        let (aw, ah) = (area.size.width as f64, area.size.height as f64);
+        let w = (900.0 * scale).min(aw * 0.94);
+        let h = (820.0 * scale).min(ah * 0.94);
+        let _ = win.set_size(tauri::PhysicalSize::new(w.round() as u32, h.round() as u32));
+        let _ = win.set_position(tauri::PhysicalPosition::new(
+            area.position.x + ((aw - w) / 2.0).round() as i32,
+            area.position.y + ((ah - h) / 2.0).round() as i32,
+        ));
+    }
+    let _ = win.show();
+    let _ = win.set_always_on_top(true);
+    let _ = win.set_focus();
+    // Na wierzchu tylko na chwilę: potem okno zachowuje się zwyczajnie.
+    let w2 = win.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let _ = w2.set_always_on_top(false);
+    });
+}
+
+/// `brief`: okno uruchomione z Harmonogramu pokazuje sam brief; `main`: zwykła aplikacja.
+#[tauri::command(async)]
+fn app_mode(state: State<AppState>) -> &'static str {
+    if state.brief_mode.load(Ordering::SeqCst) {
+        "brief"
+    } else {
+        "main"
+    }
+}
+
+#[derive(Serialize)]
+struct BriefConfig {
+    dir: Option<String>,
+    autostart: bool,
+}
+
+#[tauri::command(async)]
+fn brief_config(state: State<AppState>) -> BriefConfig {
+    BriefConfig { dir: state.settings.lock().unwrap().brief_dir.clone(), autostart: brief::autostart_enabled() }
+}
+
+#[tauri::command(async)]
+fn set_brief_dir(app: AppHandle, state: State<AppState>, dir: Option<String>) -> Result<(), String> {
+    if let Some(d) = &dir {
+        if !PathBuf::from(d).is_dir() {
+            return Err("Wskazany katalog nie istnieje".into());
+        }
+    }
+    let s = {
+        let mut s = state.settings.lock().unwrap();
+        s.brief_dir = dir;
+        s.clone()
+    };
+    save_settings(&app, &s)
+}
+
+#[tauri::command(async)]
+fn set_brief_autostart(on: bool) -> Result<bool, String> {
+    brief::set_autostart(on)?;
+    Ok(brief::autostart_enabled())
+}
+
+/// Dzisiejszy brief (`None`, gdy nie ma pliku albo nie ustawiono Folderu).
+#[tauri::command(async)]
+fn brief_today(state: State<AppState>) -> Result<Option<brief::Brief>, String> {
+    let s = state.settings.lock().unwrap().clone();
+    let Some(dir) = s.brief_dir else { return Ok(None) };
+    brief::find_today(&PathBuf::from(dir), s.vault.as_deref().map(std::path::Path::new))
+}
+
+#[tauri::command(async)]
+fn brief_seen() -> bool {
+    brief::seen_today()
+}
+
+#[tauri::command(async)]
+fn brief_mark_seen() -> Result<(), String> {
+    brief::mark_seen()
+}
+
+/// Z okna briefu do pełnej aplikacji (w tym samym oknie).
+#[tauri::command(async)]
+fn brief_open_main(app: AppHandle, state: State<AppState>) {
+    state.brief_mode.store(false, Ordering::SeqCst);
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.set_title("Notes Workbench");
+    }
+    fit_main_window(&app);
+}
+
+/// Otwiera plik briefu w domyślnym programie Windows.
+#[tauri::command(async)]
+fn brief_open_file(app: AppHandle, file: String) -> Result<(), String> {
+    app.opener().open_path(file, None::<&str>).map_err(|e| e.to_string())
+}
+
+#[tauri::command(async)]
+fn brief_close(app: AppHandle) {
+    app.exit(0);
+}
+
 /// Znacznik z interfejsu (np. „drzewo wyświetlone”) do dziennika startu.
 #[tauri::command(async)]
 fn start_mark(label: String) {
     startlog::mark(&format!("interfejs: {label}"));
 }
 
-pub fn run() {
+pub fn run(brief_mode: bool) {
     startlog::begin();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -632,12 +749,17 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(AppState::default())
-        .setup(|app| {
+        .setup(move |app| {
             if let Ok(d) = app.path().app_local_data_dir() {
                 startlog::init(d);
             }
             startlog::mark("setup: początek");
-            fit_main_window(app);
+            if brief_mode {
+                app.state::<AppState>().brief_mode.store(true, Ordering::SeqCst);
+                show_brief_window(app.handle());
+            } else {
+                fit_main_window(app.handle());
+            }
             startlog::mark("okno pokazane");
             if let Some(p) = settings_path(app.handle()) {
                 if let Ok(s) = fs::read_to_string(p) {
@@ -721,8 +843,25 @@ pub fn run() {
             trash_folder,
             restore_folder,
             set_folder_noai,
-            open_link
+            open_link,
+            app_mode,
+            brief_config,
+            set_brief_dir,
+            set_brief_autostart,
+            brief_today,
+            brief_seen,
+            brief_mark_seen,
+            brief_open_main,
+            brief_open_file,
+            brief_close
         ])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
+}
+
+pub const BRIEF_ARG: &str = brief::ARG;
+
+/// Czy start z Harmonogramu ma pokazać okno briefu (sprawdzane przed uruchomieniem Tauri).
+pub fn brief_should_show() -> bool {
+    brief::should_show()
 }

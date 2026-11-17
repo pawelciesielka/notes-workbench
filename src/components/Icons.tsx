@@ -234,3 +234,15 @@ export const LayoutIcon = ({ layout, ...p }: P & { layout: "single" | "left" | "
     </Svg>
   );
 };
+export const CalendarIcon = (p: P) => (
+  <Svg {...p}>
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+    <path d="M3.5 10h17M8 3v4M16 3v4" />
+  </Svg>
+);
+export const ExternalIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M14 4h6v6M20 4l-9 9" />
+    <path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10" />
+  </Svg>
+);

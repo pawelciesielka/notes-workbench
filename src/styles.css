@@ -2305,3 +2305,250 @@ body.tree-dragging * {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ===== Daily brief ===== */
+.brief {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.brief-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent);
+}
+.brief-title h1 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.25;
+  margin: 0;
+  color: var(--fg);
+}
+.brief-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.brief-stats b {
+  color: var(--fg);
+}
+.brief-next {
+  color: var(--accent);
+}
+.brief-next b {
+  color: var(--accent);
+}
+.brief .markdown {
+  font-size: 14px;
+  line-height: 1.55;
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+.brief-window .brief {
+  max-width: 860px;
+  margin: 0 auto;
+}
+.brief-lead {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--accent-softer);
+  border: 1px solid var(--accent-soft);
+}
+.brief-lead p:last-child,
+.brief-other p:last-child,
+.brief-meeting-sum p:last-child,
+.brief-meeting-sum ul:last-child {
+  margin-bottom: 0;
+}
+.brief-extra .markdown {
+  margin-top: 6px;
+  font-size: 13px;
+}
+.brief-meetings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.brief-meeting {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.brief-meeting.ahead {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  box-shadow: var(--shadow);
+}
+.brief-meeting.live {
+  border-color: var(--ok-fg);
+}
+.brief-meeting.past .brief-meeting-head {
+  opacity: 0.62;
+}
+.brief-meeting-head {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 12px;
+  cursor: pointer;
+  border-radius: 10px;
+}
+.brief-meeting-head:hover {
+  background: var(--hover);
+}
+.brief-meeting-head:focus-visible {
+  outline: 2px solid var(--focus);
+}
+.brief-time {
+  flex: none;
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--fg);
+}
+.brief-time-end {
+  font-weight: 400;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.brief-meeting-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.brief-meeting-title {
+  font-weight: 600;
+  font-size: 14.5px;
+}
+.brief-meeting-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.brief-where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+.pill.ahead-pill {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.pill.live-pill {
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+}
+.brief-chevron {
+  flex: none;
+  color: var(--faint);
+  transition: transform 0.12s;
+}
+.brief-meeting.open .brief-chevron {
+  transform: rotate(90deg);
+}
+.brief-meeting-sum {
+  padding: 2px 14px 12px 74px;
+}
+.brief-agenda {
+  margin-bottom: 6px;
+}
+.brief-agenda p,
+.brief-meeting-sum li p {
+  display: inline;
+  margin: 0;
+}
+.brief-todo-label {
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--fg-2);
+}
+.brief-meeting-sum ul {
+  margin-top: 2px;
+}
+.brief-other {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.brief-other h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.brief-other ul {
+  margin-bottom: 0;
+}
+.brief-modal {
+  width: 760px;
+  max-height: 88vh;
+  position: relative;
+  padding: 22px 8px 16px 22px;
+}
+.brief-modal .actions {
+  padding-right: 14px;
+}
+.brief-x {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+.brief-scroll {
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+  padding-right: 14px;
+}
+.brief-window {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.brief-window .brief-scroll {
+  padding: 26px 32px 16px;
+}
+.brief-window-actions {
+  padding: 12px 32px 16px;
+  border-top: 1px solid var(--border);
+  margin: 0;
+}
+.brief-settings {
+  cursor: default;
+}
+.brief-check {
+  cursor: pointer;
+  align-items: flex-start;
+}
+.brief-check input {
+  margin-top: 3px;
+}
+.brief-check .small {
+  margin-top: 3px;
+  line-height: 1.45;
+}
+.brief-card {
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.brief-today .actions {
+  margin-top: 12px;
+}

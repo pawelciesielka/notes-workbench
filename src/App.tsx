@@ -10,6 +10,7 @@ import { GraphView } from "./components/GraphView";
 import { SearchPanel } from "./components/SearchPanel";
 import { ProposalsView } from "./components/ProposalsView";
 import { McpView } from "./components/McpView";
+import { BriefDialog, BriefView } from "./components/Brief";
 import { useTheme, type ThemeMode } from "./lib/theme";
 import { ContextMenu, FolderPicker, PromptDialog, type MenuItem } from "./components/Menu";
 import { sortItems } from "./components/Tree";
@@ -18,6 +19,7 @@ import { SIDEBAR_DEFAULT, useSidebarWidth } from "./lib/sidebarWidth";
 import { UpdateBanner, UpdateFooter, useUpdates } from "./components/Updates";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
+  CalendarIcon,
   CheckIcon,
   FileIcon,
   FilePlusIcon,
@@ -52,6 +54,7 @@ type Main =
   | { kind: "graph" }
   | { kind: "proposals" }
   | { kind: "mcp" }
+  | { kind: "brief" }
   | { kind: "report" }
   | { kind: "import" }
   | { kind: "empty" };
@@ -145,6 +148,23 @@ export default function App() {
   useEffect(() => {
     if (vault) loadVault(true);
   }, [vault, loadVault]);
+
+  // Daily brief: przy pierwszym otwarciu aplikacji danego dnia (jeśli nie pokazało go już okno z Harmonogramu).
+  useEffect(() => {
+    if (!vault) return;
+    let gone = false;
+    (async () => {
+      if (await api.briefSeen()) return;
+      const b = await api.briefToday();
+      if (!b || gone) return;
+      await api.briefMarkSeen();
+      setDialog(<BriefDialog brief={b} onClose={() => setDialog(null)} onOpenNote={(p) => openNote(p)} onError={setError} />);
+    })().catch(() => {});
+    return () => {
+      gone = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vault]);
 
   // Pliki mogły zmienić się poza aplikacją: po powrocie do okna odtwarzamy indeks.
   useEffect(() => {
@@ -673,6 +693,14 @@ export default function App() {
             {proposalCount > 0 && <span className="badge">{proposalCount}</span>}
           </button>
           <button
+            className={`icon-btn${main.kind === "brief" ? " on" : ""}`}
+            onClick={() => setMain({ kind: "brief" })}
+            title="Daily brief: podsumowanie dnia i ustawienia"
+            aria-label="Daily brief"
+          >
+            <CalendarIcon />
+          </button>
+          <button
             className={`icon-btn${main.kind === "mcp" ? " on" : ""}`}
             onClick={() => setMain({ kind: "mcp" })}
             title="Połącz z AI: Claude Desktop, Claude Code, Codex (MCP)"
@@ -779,6 +807,7 @@ export default function App() {
         {main.kind === "graph" && (
           <GraphView center={lastNote} theme={theme} onOpen={openNote} onTag={openTag} onError={onError} />
         )}
+        {main.kind === "brief" && <BriefView onOpenNote={openNote} onError={onError} />}
         {main.kind === "mcp" && <McpView onError={onError} onOpenProposals={() => setMain({ kind: "proposals" })} />}
         {main.kind === "proposals" && (
           <ProposalsView

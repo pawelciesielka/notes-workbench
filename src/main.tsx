@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { BriefGate } from "./components/Brief";
 import "./styles.css";
 import { applyStoredTheme } from "./lib/theme";
 import { api } from "./lib/api";
@@ -18,6 +19,6 @@ for (const type of ["dragover", "drop"] as const) {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <BriefGate app={<App />} />
   </React.StrictMode>,
 );
