@@ -148,7 +148,7 @@ pub fn rename_folder(vault: &Path, idx: &Index, path: &str, new_name: &str) -> R
     let n = amno_import::names::unique(&base, &[""], &mut used);
     let new_path = join(parent, &n);
     let notes = notes_under(vault, path);
-    fs::rename(resolve(vault, path)?, resolve(vault, &new_path)?).map_err(|e| e.to_string())?;
+    rename_dir(vault, path, &new_path)?;
     let fixed = after_folder_move(vault, idx, path, &new_path, notes)?;
     Ok((new_path, fixed))
 }
@@ -285,8 +285,23 @@ fn move_dir(vault: &Path, path: &str, to_parent: &str) -> Result<String, String>
     fs::create_dir_all(&dest_parent).map_err(|e| e.to_string())?;
     let n = amno_import::names::unique(last(path), &[""], &mut used_names(&dest_parent));
     let new_path = join(to_parent, &n);
-    fs::rename(resolve(vault, path)?, resolve(vault, &new_path)?).map_err(|e| e.to_string())?;
+    rename_dir(vault, path, &new_path)?;
     Ok(new_path)
+}
+
+/// Przenosi katalog `from` → `to`. Na Windows katalogu nie da się przenieść, gdy jakiś program
+/// (najczęściej okno Eksploratora) ma otwarty ten Folder albo coś w środku — wtedy mówimy to wprost.
+fn rename_dir(vault: &Path, from: &str, to: &str) -> Result<(), String> {
+    fs::rename(resolve(vault, from)?, resolve(vault, to)?).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            format!(
+                "Folder „{from}” albo coś w nim jest otwarte w innym programie (np. w oknie Eksploratora). \
+                 Zamknij to okno i spróbuj ponownie."
+            )
+        } else {
+            e.to_string()
+        }
+    })
 }
 
 /// Folder do Kosza (pod tą samą ścieżką w `.kosz/`, żeby dało się go przywrócić).
@@ -328,6 +343,24 @@ mod tests {
         let f = dir.join(p);
         fs::create_dir_all(f.parent().unwrap()).unwrap();
         fs::write(f, s).unwrap();
+    }
+
+    /// Podfolder otwarty w innym programie (jak w oknie Eksploratora) blokuje zmianę nazwy Folderu.
+    #[cfg(windows)]
+    #[test]
+    fn rename_locked_folder_explains() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = std::env::temp_dir().join(format!("nw-ops-lock-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        write(&dir, "Zajety/Pod/A.md", "a");
+        let idx = Index::build(&dir);
+        // FILE_FLAG_BACKUP_SEMANTICS: uchwyt do katalogu, bez FILE_SHARE_DELETE.
+        let lock = fs::OpenOptions::new().read(true).custom_flags(0x0200_0000).open(dir.join("Zajety/Pod")).unwrap();
+        let err = rename_folder(&dir, &idx, "Zajety", "Wolny").unwrap_err();
+        assert!(err.contains("otwarte w innym programie"), "{err}");
+        drop(lock);
+        assert_eq!(rename_folder(&dir, &idx, "Zajety", "Wolny").unwrap().0, "Wolny");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
