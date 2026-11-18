@@ -61,7 +61,7 @@ function loadAge(): number {
 }
 
 /** Krótki opis czasu modyfikacji: „dziś 14:05”, „wczoraj”, „5 dni temu”, „12.03.2025”. */
-function ago(ms: number, now: number): string {
+export function ago(ms: number, now: number): string {
   const d = new Date(ms);
   const midnight = new Date(now);
   midnight.setHours(0, 0, 0, 0);

@@ -11,6 +11,8 @@ import { SearchPanel } from "./components/SearchPanel";
 import { ProposalsView } from "./components/ProposalsView";
 import { McpView } from "./components/McpView";
 import { BriefDialog, BriefView } from "./components/Brief";
+import { RecentView } from "./components/RecentView";
+import { markViewed, moveViewed } from "./lib/recent";
 import { useTheme, type ThemeMode } from "./lib/theme";
 import { ContextMenu, FolderPicker, PromptDialog, type MenuItem } from "./components/Menu";
 import { sortItems } from "./components/Tree";
@@ -21,6 +23,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import {
   CalendarIcon,
   CheckIcon,
+  ClockIcon,
   FileIcon,
   FilePlusIcon,
   LinkIcon,
@@ -193,12 +196,16 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const openNote = useCallback((path: string, edit?: boolean) => {
-    if (!path) return setMain({ kind: "empty" });
-    if (path.startsWith(".kosz/")) setSide("trash");
-    setLastNote(path);
-    setMain({ kind: "note", path, edit });
-  }, []);
+  const openNote = useCallback(
+    (path: string, edit?: boolean) => {
+      if (!path) return setMain({ kind: "empty" });
+      if (path.startsWith(".kosz/")) setSide("trash");
+      if (vault) markViewed(vault, path);
+      setLastNote(path);
+      setMain({ kind: "note", path, edit });
+    },
+    [vault],
+  );
 
   const openTag = useCallback((t: string) => {
     setSide("tags");
@@ -273,6 +280,7 @@ export default function App() {
   const openPath = main.kind === "note" ? main.path : null;
   /** Otwarta Notatka zmieniła ścieżkę (przeniesienie, zmiana nazwy Folderu). */
   const followMove = (from: string, to: string, isFolder: boolean) => {
+    if (vault && from !== to) moveViewed(vault, from, to, isFolder);
     if (!openPath) return;
     if (!isFolder && openPath === from) openNote(to);
     else if (isFolder && openPath.startsWith(from + "/")) openNote(to + openPath.slice(from.length));
@@ -676,6 +684,14 @@ export default function App() {
             <FolderPlusIcon />
           </button>
           <button
+            className={`icon-btn${main.kind === "empty" ? " on" : ""}`}
+            onClick={() => setMain({ kind: "empty" })}
+            title="Ostatnie Notatki: otwierane i zmieniane"
+            aria-label="Ostatnie Notatki"
+          >
+            <ClockIcon />
+          </button>
+          <button
             className={`icon-btn${main.kind === "graph" ? " on" : ""}`}
             onClick={() => setMain({ kind: "graph" })}
             title="Graf wiedzy"
@@ -829,27 +845,25 @@ export default function App() {
           </div>
         )}
         {main.kind === "empty" && (
-          <div className="empty">
-            <div className="empty-icon">
-              <FileIcon size={26} />
-            </div>
-            <h2>Wybierz Notatkę</h2>
-            <div>Otwórz Notatkę z drzewa po lewej albo utwórz nową.</div>
-            <div className="shortcuts">
-              <kbd>Ctrl+Shift+F</kbd>
-              <span>Szukaj w treści</span>
-              <kbd>Ctrl+E</kbd>
-              <span>Edycja i podgląd Notatki</span>
-              <kbd>Ctrl+S</kbd>
-              <span>Zapisz od razu (zapis i tak dzieje się sam)</span>
-              <kbd>↑ ↓ ← →</kbd>
-              <span>Poruszanie się po drzewie</span>
-              <kbd>[[</kbd>
-              <span>Link do innej Notatki (w edycji)</span>
-              <kbd>Ctrl+;</kbd>
-              <span>Wstaw datę (Ctrl+Shift+; z godziną)</span>
-            </div>
-          </div>
+          <RecentView vault={vault} tree={tree} onOpen={openNote}>
+            <details className="recent-keys">
+              <summary>Skróty klawiszowe</summary>
+              <div className="shortcuts">
+                <kbd>Ctrl+Shift+F</kbd>
+                <span>Szukaj w treści</span>
+                <kbd>Ctrl+E</kbd>
+                <span>Edycja i podgląd Notatki</span>
+                <kbd>Ctrl+S</kbd>
+                <span>Zapisz od razu (zapis i tak dzieje się sam)</span>
+                <kbd>↑ ↓ ← →</kbd>
+                <span>Poruszanie się po drzewie</span>
+                <kbd>[[</kbd>
+                <span>Link do innej Notatki (w edycji)</span>
+                <kbd>Ctrl+;</kbd>
+                <span>Wstaw datę (Ctrl+Shift+; z godziną)</span>
+              </div>
+            </details>
+          </RecentView>
         )}
       </main>
     </div>
