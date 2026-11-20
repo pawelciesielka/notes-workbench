@@ -240,6 +240,13 @@ export const CalendarIcon = (p: P) => (
     <path d="M3.5 10h17M8 3v4M16 3v4" />
   </Svg>
 );
+export const TargetIcon = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <circle cx="12" cy="12" r="4.5" />
+    <circle cx="12" cy="12" r="0.8" fill="currentColor" />
+  </Svg>
+);
 export const ExternalIcon = (p: P) => (
   <Svg {...p}>
     <path d="M14 4h6v6M20 4l-9 9" />

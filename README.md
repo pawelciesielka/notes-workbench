@@ -21,6 +21,11 @@ zapisywana (konflikt), a pozostałe zaznaczone Propozycje przechodzą dalej.
 Foldery: Claude proponuje nowe Foldery (`propose_folder`, opcjonalnie z treścią Notatki folderu) i zmiany ich nazw
 (`propose_folder_rename`); Notatki można proponować od razu do Folderu, który dopiero czeka na akceptację.
 
+Jarvis: widok z ikoną celu dla lokalnego trackera aktywności i zadań (`C:\WORK\jarvis\jarvis.py`). Zadania z rejestru
+`zadania.md` (dodawanie, zrobione, priorytet `!1–!3`, data `@RRRR-MM-DD`, `#słowa`, fokus), podsumowanie dnia
+(czas aktywny, kategorie, czas na zadaniach, odpłynięcia i decyzje strażnika) oraz „Konfiguruj Jarvisa”: start
+i stop trackera, autostart z Windows, godziny i progi strażnika. Opis: [docs/jarvis.md](docs/jarvis.md).
+
 Edytor: „Markdown” (CodeMirror z podglądem obok) albo „Wizualny” (WYSIWYG, TipTap) z paskiem formatowania:
 nagłówki, pogrubienie, kolory i wyróżnienia, listy i listy zadań, tabele ze scalaniem komórek, wyrównanie, linki.
 Wybór jest zapamiętywany. Edytor wizualny zapisuje Markdown tak jak Import (kolory jako `<span style>`, wyrównanie
@@ -98,7 +103,8 @@ tylko zaraz po imporcie, później jest już tylko w tych plikach.
   - `semantic.rs`: wektory fragmentów Notatek, wyszukiwanie po znaczeniu, Notatki podobne
   - `proposals.rs`: kolejka Propozycji powiązań i Tagów (dodanie, akceptacja, odrzucenie)
 - `crates/notes-mcp/`: serwer MCP (stdio, JSON-RPC), tylko do odczytu
-- `src-tauri/src/`: komendy aplikacji i protokół `vault://` (obrazy, PDF ze Skarbca)
+- `src-tauri/src/`: komendy aplikacji i protokół `vault://` (obrazy, PDF ze Skarbca); `jarvis.rs`: rejestr
+  zadań, `config.json` i wywołania CLI Jarvisa
 - `src/`: UI (React): drzewo, widok i edytor Notatki (CodeMirror), Tagi, Graf wiedzy (force-graph), Raport, kreator Importu
 
 ## Aktualizacje i wydania

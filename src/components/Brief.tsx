@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, type Brief, type BriefConfig } from "../lib/api";
 import { isAhead, isNow, parseBrief, untilLabel, type BriefMeeting } from "../lib/brief";
+import { JarvisStrip } from "./JarvisView";
 import { CalendarIcon, ChevronRight, ExternalIcon, FileIcon, FolderOpenAction, XIcon } from "./Icons";
 
 /** Markdown briefu; odnośniki otwierają się w przeglądarce, nie w oknie aplikacji. */
@@ -251,7 +252,15 @@ export function BriefWindow({ onOpenApp }: { onOpenApp: () => void }) {
 }
 
 /** Widok Daily brief w aplikacji: ustawienia i dzisiejsze podsumowanie. */
-export function BriefView({ onOpenNote, onError }: { onOpenNote: (p: string) => void; onError: (m: string) => void }) {
+export function BriefView({
+  onOpenNote,
+  onError,
+  onOpenJarvis,
+}: {
+  onOpenNote: (p: string) => void;
+  onError: (m: string) => void;
+  onOpenJarvis?: () => void;
+}) {
   const [cfg, setCfg] = useState<BriefConfig | null>(null);
   const [brief, setBrief] = useState<Brief | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -346,6 +355,7 @@ export function BriefView({ onOpenNote, onError }: { onOpenNote: (p: string) => 
       </div>
       <div className="mcp-section brief-today">
         <h2>Dzisiaj</h2>
+        {onOpenJarvis && <JarvisStrip onOpen={onOpenJarvis} />}
         {brief === undefined && <div className="muted">Sprawdzanie…</div>}
         {brief === null && (
           <div className="muted">{cfg?.dir ? `W Folderze nie ma jeszcze pliku z datą ${today} w nazwie.` : "Najpierw wybierz Folder z briefami."}</div>

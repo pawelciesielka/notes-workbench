@@ -2800,6 +2800,7 @@ dependencies = [
  "chrono",
  "notes-core",
  "notes-mcp",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

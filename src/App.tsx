@@ -11,6 +11,7 @@ import { SearchPanel } from "./components/SearchPanel";
 import { ProposalsView } from "./components/ProposalsView";
 import { McpView } from "./components/McpView";
 import { BriefDialog, BriefView } from "./components/Brief";
+import { JarvisView } from "./components/JarvisView";
 import { RecentView } from "./components/RecentView";
 import { markViewed, moveViewed } from "./lib/recent";
 import { useTheme, type ThemeMode } from "./lib/theme";
@@ -22,6 +23,7 @@ import { UpdateBanner, UpdateFooter, useUpdates } from "./components/Updates";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
   CalendarIcon,
+  TargetIcon,
   CheckIcon,
   ClockIcon,
   FileIcon,
@@ -58,6 +60,7 @@ type Main =
   | { kind: "proposals" }
   | { kind: "mcp" }
   | { kind: "brief" }
+  | { kind: "jarvis" }
   | { kind: "report" }
   | { kind: "import" }
   | { kind: "empty" };
@@ -717,6 +720,14 @@ export default function App() {
             <CalendarIcon />
           </button>
           <button
+            className={`icon-btn${main.kind === "jarvis" ? " on" : ""}`}
+            onClick={() => setMain({ kind: "jarvis" })}
+            title="Jarvis: zadania, fokus i podsumowanie dnia"
+            aria-label="Jarvis"
+          >
+            <TargetIcon />
+          </button>
+          <button
             className={`icon-btn${main.kind === "mcp" ? " on" : ""}`}
             onClick={() => setMain({ kind: "mcp" })}
             title="Połącz z AI: Claude Desktop, Claude Code, Codex (MCP)"
@@ -823,7 +834,10 @@ export default function App() {
         {main.kind === "graph" && (
           <GraphView center={lastNote} theme={theme} onOpen={openNote} onTag={openTag} onError={onError} />
         )}
-        {main.kind === "brief" && <BriefView onOpenNote={openNote} onError={onError} />}
+        {main.kind === "brief" && (
+          <BriefView onOpenNote={openNote} onError={onError} onOpenJarvis={() => setMain({ kind: "jarvis" })} />
+        )}
+        {main.kind === "jarvis" && <JarvisView onError={onError} />}
         {main.kind === "mcp" && <McpView onError={onError} onOpenProposals={() => setMain({ kind: "proposals" })} />}
         {main.kind === "proposals" && (
           <ProposalsView

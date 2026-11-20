@@ -147,7 +147,61 @@ export type Brief = {
 };
 export type BriefConfig = { dir: string | null; autostart: boolean };
 
+/** Jarvis (docs/jarvis.md). */
+export type JarvisInfo = {
+  dir: string | null;
+  dir_setting: string | null;
+  python: string | null;
+  python_setting: string | null;
+  running: boolean;
+  autostart: boolean;
+};
+/** Zadanie z rejestru `zadania.md`; `raw` to pełna linia, po której backend wskazuje zadanie przy zmianie. */
+export type JarvisTask = {
+  raw: string;
+  done: boolean;
+  name: string;
+  prio: number | null;
+  date: string | null;
+  tags: string[];
+};
+export type JarvisTasks = { file: string; tasks: JarvisTask[]; focus: string | null; today: string };
+export type JarvisGuardEvent = { t: string; ev: string; task?: string; reason?: string; how?: string; [k: string]: unknown };
+/** Wynik `jarvis.py status --json`. */
+export type JarvisStatus = {
+  day: string;
+  tracker: { running: boolean; pid: number | null };
+  autostart: boolean;
+  focus: string | null;
+  tasks_file: string;
+  active: number;
+  idle: number;
+  first: string | null;
+  last: string | null;
+  switches: number;
+  categories: { name: string; secs: number }[];
+  colors: Record<string, string>;
+  tasks: { name: string; raw: string; done: boolean; when: string; prio: number; secs: number; worked: boolean }[];
+  guard: { drifts: number; focus_changes: number; backs: number; breaks: number; events: JarvisGuardEvent[] };
+};
+export type JarvisConfig = {
+  guard: { enabled: boolean; days: number[]; hours: [string, string]; warn_minutes: number; overlay_minutes: number };
+  tasks_file: string;
+};
+
 export const api = {
+  jarvisInfo: () => invoke<JarvisInfo>("jarvis_info"),
+  setJarvisPaths: (dir: string | null, python: string | null) => invoke<void>("set_jarvis_paths", { dir, python }),
+  jarvisTasks: () => invoke<JarvisTasks>("jarvis_tasks"),
+  jarvisStatus: (day?: string) => invoke<JarvisStatus>("jarvis_status", { day: day ?? null }),
+  jarvisAddTask: (text: string) => invoke<JarvisTask>("jarvis_add_task", { text }),
+  jarvisUpdateTask: (raw: string, task: JarvisTask) => invoke<JarvisTask>("jarvis_update_task", { raw, task }),
+  jarvisSetFocus: (name: string) => invoke<void>("jarvis_set_focus", { name }),
+  jarvisControl: (action: "start" | "stop" | "restart" | "install" | "uninstall") => invoke<string>("jarvis_control", { action }),
+  jarvisConfig: () => invoke<JarvisConfig>("jarvis_config"),
+  /** Zwraca, czy tracker został zrestartowany. */
+  jarvisSetConfig: (config: JarvisConfig) => invoke<boolean>("jarvis_set_config", { config }),
+  jarvisReport: (day?: string) => invoke<void>("jarvis_report", { day: day ?? null }),
   /** `brief`: okno uruchomione z Harmonogramu zadań pokazuje sam Daily brief. */
   appMode: () => invoke<"brief" | "main">("app_mode"),
   briefConfig: () => invoke<BriefConfig>("brief_config"),

@@ -288,6 +288,121 @@ Object.assign(handlers, {
   brief_close: () => null,
 });
 
+// ===== Jarvis =====
+const jvDay = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toLocaleDateString("sv-SE");
+};
+const jvToday = jvDay(0);
+const jvLines = [
+  `- [ ] Oferta dla ABC !1 #oferta #abc @${jvToday}`,
+  `- [ ] Przegląd maili #outlook`,
+  `- [ ] Raport kwartalny !2 #raport @${jvDay(-2)}`,
+  `- [ ] Spotkanie z zespołem #teams @${jvDay(3)}`,
+  `- [x] Faktury !2 #faktura @${jvToday}`,
+];
+let jvFocus: string | null = "Oferta dla ABC";
+let jvInfo = {
+  dir: String.raw`C:\WORK\jarvis`,
+  dir_setting: null as string | null,
+  python: String.raw`C:\Python\python.exe`,
+  python_setting: null as string | null,
+  running: true,
+  autostart: false,
+};
+let jvCfg = {
+  guard: { enabled: true, days: [0, 1, 2, 3, 4], hours: ["08:00", "18:00"], warn_minutes: 5, overlay_minutes: 10 },
+  tasks_file: String.raw`C:\Dane\Notatki\Dziennik\Daily_brief\Zadania\zadania.md`,
+};
+type JvTask = { raw: string; done: boolean; name: string; prio: number | null; date: string | null; tags: string[] };
+const jvParse = (raw: string): JvTask | null => {
+  const m = /^\s*[-*]\s*\[( |x|X)\]\s*(.+?)\s*$/.exec(raw);
+  if (!m) return null;
+  const text = m[2];
+  const p = /(?:^|\s)!([1-3])\b/.exec(text);
+  return {
+    raw,
+    done: m[1] !== " ",
+    name: text.replace(/\s*(?:[@#][\w\-.+]+|![1-3]\b)/gu, "").trim(),
+    prio: p ? Number(p[1]) : null,
+    date: /@(\d{4}-\d{2}-\d{2})/.exec(text)?.[1] ?? null,
+    tags: [...text.matchAll(/#([\w\-.+]+)/gu)].map((x) => x[1]),
+  };
+};
+const jvLine = (t: JvTask) =>
+  `- [${t.done ? "x" : " "}] ${t.name}${t.prio ? ` !${t.prio}` : ""}${t.date ? ` @${t.date}` : ""}${t.tags.map((g) => ` #${g}`).join("")}`;
+const jvTasks = () => jvLines.map(jvParse).filter((t): t is JvTask => !!t);
+Object.assign(handlers, {
+  jarvis_info: () => jvInfo,
+  set_jarvis_paths: (a: Record<string, unknown>) => {
+    jvInfo = { ...jvInfo, dir_setting: (a.dir as string) ?? null, python_setting: (a.python as string) ?? null };
+    return null;
+  },
+  jarvis_tasks: () => ({ file: jvCfg.tasks_file, tasks: jvTasks(), focus: jvFocus, today: jvToday }),
+  jarvis_status: (a: Record<string, unknown>) => ({
+    day: (a.day as string) ?? jvToday,
+    tracker: { running: jvInfo.running, pid: 1234 },
+    autostart: jvInfo.autostart,
+    focus: jvFocus,
+    tasks_file: jvCfg.tasks_file,
+    active: 6 * 3600 + 1240,
+    idle: 3100,
+    first: `${jvToday}T08:12:00`,
+    last: `${jvToday}T16:40:00`,
+    switches: 412,
+    categories: [
+      { name: "Dokumenty/Biuro", secs: 9800 },
+      { name: "Komunikacja", secs: 6200 },
+      { name: "Programowanie/IT", secs: 4100 },
+      { name: "Inne", secs: 1300 },
+      { name: "Rozrywka/Social", secs: 640 },
+    ],
+    colors: { "Dokumenty/Biuro": "#e8a33d", Komunikacja: "#16a37f", "Programowanie/IT": "#d9534f", Inne: "#9aa5b1", "Rozrywka/Social": "#4f7cff" },
+    tasks: jvTasks().map((t, i) => ({ ...t, when: "dziś", prio: t.prio ?? 3, secs: [5400, 1800, 0, 0, 2400][i] ?? 0, worked: i < 2 })),
+    guard: {
+      drifts: 2,
+      focus_changes: 3,
+      backs: 1,
+      breaks: 1,
+      events: [
+        { t: `${jvToday}T08:15:02`, ev: "focus", task: "Oferta dla ABC", reason: "pick", how: "list" },
+        { t: `${jvToday}T10:41:10`, ev: "overlay", reason: "drift" },
+        { t: `${jvToday}T10:41:40`, ev: "back", reason: "drift", task: "Oferta dla ABC" },
+        { t: `${jvToday}T13:05:00`, ev: "break", reason: "drift" },
+        { t: `${jvToday}T14:20:00`, ev: "done", task: "Faktury", ok: true },
+      ],
+    },
+  }),
+  jarvis_add_task: (a: Record<string, unknown>) => {
+    jvLines.push(`- [ ] ${a.text}`);
+    return jvParse(jvLines[jvLines.length - 1]);
+  },
+  jarvis_update_task: (a: Record<string, unknown>) => {
+    const i = jvLines.indexOf(a.raw as string);
+    if (i < 0) throw new Error("Rejestr zadań zmienił się w międzyczasie.");
+    jvLines[i] = jvLine(a.task as JvTask);
+    return jvParse(jvLines[i]);
+  },
+  jarvis_set_focus: (a: Record<string, unknown>) => {
+    jvFocus = a.name as string;
+    return null;
+  },
+  jarvis_control: (a: Record<string, unknown>) => {
+    if (a.action === "start" || a.action === "restart") jvInfo = { ...jvInfo, running: true };
+    if (a.action === "stop") jvInfo = { ...jvInfo, running: false };
+    if (a.action === "install") jvInfo = { ...jvInfo, autostart: true };
+    if (a.action === "uninstall") jvInfo = { ...jvInfo, autostart: false };
+    return "";
+  },
+  jarvis_config: () => jvCfg,
+  jarvis_set_config: (a: Record<string, unknown>) => {
+    jvCfg = a.config as typeof jvCfg;
+    return jvInfo.running;
+  },
+  jarvis_report: () => null,
+});
+
 export async function mockInvoke<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const h = handlers[cmd];
   if (!h) throw new Error(`Podgląd: brak danych dla ${cmd}`);

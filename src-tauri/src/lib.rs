@@ -1,4 +1,5 @@
 mod brief;
+mod jarvis;
 mod mcp_setup;
 mod startlog;
 
@@ -24,6 +25,12 @@ struct Settings {
     /// Folder z plikami Daily brief (Markdown z datą w nazwie).
     #[serde(default)]
     brief_dir: Option<String>,
+    /// Katalog Jarvisa (z `jarvis.py`); brak = `C:\WORK\jarvis`.
+    #[serde(default)]
+    jarvis_dir: Option<String>,
+    /// Interpreter Pythona dla Jarvisa; brak = wykryty automatycznie.
+    #[serde(default)]
+    jarvis_python: Option<String>,
 }
 
 #[derive(Default)]
@@ -735,6 +742,192 @@ fn brief_close(app: AppHandle) {
     app.exit(0);
 }
 
+// ===== Jarvis (docs/jarvis.md) =====
+
+#[derive(Serialize)]
+struct JarvisInfo {
+    /// Katalog z `jarvis.py` (`None`: nie znaleziono).
+    dir: Option<String>,
+    dir_setting: Option<String>,
+    python: Option<String>,
+    python_setting: Option<String>,
+    running: bool,
+    autostart: bool,
+}
+
+fn jarvis_dir(state: &State<AppState>) -> Result<PathBuf, String> {
+    let d = state.settings.lock().unwrap().jarvis_dir.clone();
+    jarvis::resolve_dir(d.as_deref())
+        .ok_or_else(|| "Nie znaleziono Jarvisa (jarvis.py). Wskaż jego katalog w zakładce „Konfiguruj Jarvisa”.".into())
+}
+
+fn jarvis_env(state: &State<AppState>) -> Result<(PathBuf, PathBuf), String> {
+    let dir = jarvis_dir(state)?;
+    let p = state.settings.lock().unwrap().jarvis_python.clone();
+    let py = jarvis::resolve_python(p.as_deref())
+        .ok_or("Nie znaleziono Pythona (python.exe). Wskaż go w zakładce „Konfiguruj Jarvisa”.")?;
+    Ok((py, dir))
+}
+
+fn jarvis_tasks_file(dir: &std::path::Path) -> Result<PathBuf, String> {
+    Ok(PathBuf::from(jarvis::read_config(dir)?.tasks_file))
+}
+
+#[tauri::command(async)]
+fn jarvis_info(state: State<AppState>) -> JarvisInfo {
+    let s = state.settings.lock().unwrap().clone();
+    let dir = jarvis::resolve_dir(s.jarvis_dir.as_deref());
+    JarvisInfo {
+        running: dir.as_deref().is_some_and(jarvis::tracker_running),
+        autostart: jarvis::autostart_enabled(),
+        dir: dir.map(|d| d.to_string_lossy().to_string()),
+        dir_setting: s.jarvis_dir,
+        python: jarvis::resolve_python(s.jarvis_python.as_deref()).map(|p| p.to_string_lossy().to_string()),
+        python_setting: s.jarvis_python,
+    }
+}
+
+#[tauri::command(async)]
+fn set_jarvis_paths(app: AppHandle, state: State<AppState>, dir: Option<String>, python: Option<String>) -> Result<(), String> {
+    if let Some(d) = &dir {
+        if jarvis::resolve_dir(Some(d)).is_none() {
+            return Err("W tym katalogu nie ma pliku jarvis.py".into());
+        }
+    }
+    if let Some(p) = &python {
+        if !PathBuf::from(p).is_file() {
+            return Err("Wskazany plik Pythona nie istnieje".into());
+        }
+    }
+    let s = {
+        let mut s = state.settings.lock().unwrap();
+        s.jarvis_dir = dir;
+        s.jarvis_python = python;
+        s.clone()
+    };
+    save_settings(&app, &s)
+}
+
+#[derive(Serialize)]
+struct JarvisTasks {
+    file: String,
+    tasks: Vec<jarvis::Task>,
+    focus: Option<String>,
+    today: String,
+}
+
+#[tauri::command(async)]
+fn jarvis_tasks(state: State<AppState>) -> Result<JarvisTasks, String> {
+    let dir = jarvis_dir(&state)?;
+    let file = jarvis_tasks_file(&dir)?;
+    let today = brief::today();
+    Ok(JarvisTasks {
+        tasks: jarvis::read_tasks(&file)?,
+        file: file.to_string_lossy().to_string(),
+        focus: jarvis::focus(&dir, &today),
+        today,
+    })
+}
+
+/// Pełny stan dnia od Jarvisa (`status --json`): czas, kategorie, zadania z czasem, strażnik.
+#[tauri::command(async)]
+fn jarvis_status(state: State<AppState>, day: Option<String>) -> Result<serde_json::Value, String> {
+    let (py, dir) = jarvis_env(&state)?;
+    let mut args = vec!["status", "--json"];
+    if let Some(d) = day.as_deref() {
+        args.push(d);
+    }
+    let out = jarvis::run(&py, &dir, &args)?;
+    serde_json::from_str(out.trim())
+        .map_err(|e| format!("Nieczytelna odpowiedź Jarvisa ({e}). Czy jarvis.py ma komendę status --json?"))
+}
+
+#[tauri::command(async)]
+fn jarvis_add_task(state: State<AppState>, text: String) -> Result<jarvis::Task, String> {
+    jarvis::add_task(&jarvis_tasks_file(&jarvis_dir(&state)?)?, &text)
+}
+
+#[tauri::command(async)]
+fn jarvis_update_task(state: State<AppState>, raw: String, task: jarvis::Task) -> Result<jarvis::Task, String> {
+    jarvis::update_task(&jarvis_tasks_file(&jarvis_dir(&state)?)?, &raw, &task)
+}
+
+/// Fokus przez CLI, żeby Jarvis zapisał też wpis w `guard.jsonl`.
+#[tauri::command(async)]
+fn jarvis_set_focus(state: State<AppState>, name: String) -> Result<(), String> {
+    let (py, dir) = jarvis_env(&state)?;
+    let out = jarvis::run(&py, &dir, &["focus", &name])?;
+    if out.contains("Nie znaleziono") {
+        return Err(format!(
+            "Jarvis nie ustawił fokusu: „{name}” nie jest otwartym zadaniem na dziś (fokus może być tylko zadanie z dzisiejszą datą, zaległe albo bez terminu)."
+        ));
+    }
+    Ok(())
+}
+
+fn jarvis_wait_running(dir: &std::path::Path) {
+    // Tracker zapisuje jarvis.pid zaraz po starcie; czekamy chwilę, żeby stan w oknie od razu był prawdziwy.
+    for _ in 0..20 {
+        if jarvis::tracker_running(dir) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+    }
+}
+
+/// `start`, `stop`, `restart`, `install` (autostart), `uninstall`.
+#[tauri::command(async)]
+fn jarvis_control(state: State<AppState>, action: String) -> Result<String, String> {
+    let (py, dir) = jarvis_env(&state)?;
+    let steps: &[&str] = match action.as_str() {
+        "start" => &["start"],
+        "stop" => &["stop"],
+        "restart" => &["stop", "start"],
+        "install" => &["install"],
+        "uninstall" => &["uninstall"],
+        _ => return Err(format!("Nieznana akcja: {action}")),
+    };
+    let mut out = String::new();
+    for s in steps {
+        out += &jarvis::run(&py, &dir, &[s])?;
+        if *s == "stop" {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+    if steps.last() == Some(&"start") {
+        jarvis_wait_running(&dir);
+    }
+    Ok(out.trim().to_string())
+}
+
+#[tauri::command(async)]
+fn jarvis_config(state: State<AppState>) -> Result<jarvis::Config, String> {
+    jarvis::read_config(&jarvis_dir(&state)?)
+}
+
+/// Zapisuje konfigurację; działający tracker restartuje, żeby ją wczytał. Zwraca, czy był restart.
+#[tauri::command(async)]
+fn jarvis_set_config(state: State<AppState>, config: jarvis::Config) -> Result<bool, String> {
+    let (py, dir) = jarvis_env(&state)?;
+    jarvis::write_config(&dir, &config)?;
+    if !jarvis::tracker_running(&dir) {
+        return Ok(false);
+    }
+    jarvis::run(&py, &dir, &["stop"])?;
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    jarvis::run(&py, &dir, &["start"])?;
+    jarvis_wait_running(&dir);
+    Ok(true)
+}
+
+/// Raport HTML dnia (`jarvis report <dzień> --open`) w przeglądarce.
+#[tauri::command(async)]
+fn jarvis_report(state: State<AppState>, day: Option<String>) -> Result<(), String> {
+    let (py, dir) = jarvis_env(&state)?;
+    let d = day.unwrap_or_else(brief::today);
+    jarvis::run(&py, &dir, &["report", &d, "--open"]).map(|_| ())
+}
+
 /// Znacznik z interfejsu (np. „drzewo wyświetlone”) do dziennika startu.
 #[tauri::command(async)]
 fn start_mark(label: String) {
@@ -853,7 +1046,18 @@ pub fn run(brief_mode: bool) {
             brief_mark_seen,
             brief_open_main,
             brief_open_file,
-            brief_close
+            brief_close,
+            jarvis_info,
+            set_jarvis_paths,
+            jarvis_tasks,
+            jarvis_status,
+            jarvis_add_task,
+            jarvis_update_task,
+            jarvis_set_focus,
+            jarvis_control,
+            jarvis_config,
+            jarvis_set_config,
+            jarvis_report
         ])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
