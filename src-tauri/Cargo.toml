@@ -1,6 +1,6 @@
 [package]
 name = "notes-workbench"
-version = "0.1.13"
+version = "0.1.14"
 description = "Notes Workbench"
 edition = "2021"
 license = "MIT"
