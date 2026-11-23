@@ -1,6 +1,8 @@
 /* ===== Motywy =====
    Bez atrybutu data-theme motyw idzie za Windows; data-theme="light" / "dark" wymusza wybór użytkownika. */
 :root {
+  /* Szerokość kolumny Notatki (widok i edytory); stała przy powiększaniu czcionki. */
+  --note-width: 1040px;
   color-scheme: light;
   --bg: #ffffff;
   --bg-side: #f6f6f8;
@@ -809,7 +811,7 @@ body.tree-dragging * {
 .note {
   flex: 1;
   overflow: auto;
-  padding: 28px 48px 80px;
+  padding: 24px 24px 80px;
   min-width: 0;
 }
 .note-head,
@@ -824,7 +826,7 @@ body.tree-dragging * {
 .issues,
 .banner,
 .note > .tabs {
-  max-width: 780px;
+  max-width: var(--note-width);
   margin-left: auto;
   margin-right: auto;
 }
@@ -1119,7 +1121,7 @@ body.tree-dragging * {
 .editor {
   flex: 1;
   min-height: 0;
-  max-width: 780px;
+  max-width: var(--note-width);
   width: 100%;
   margin: 0 auto;
   border: 1px solid var(--border);
@@ -2152,7 +2154,7 @@ body.tree-dragging * {
 .visual-editor {
   flex: 1;
   min-height: 0;
-  max-width: 780px;
+  max-width: var(--note-width);
   width: 100%;
   margin: 0 auto;
   display: flex;
