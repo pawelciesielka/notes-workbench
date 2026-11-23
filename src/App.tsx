@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, folderOf, type Report, type Summary, type TreeNode } from "./lib/api";
 import { Tree } from "./components/Tree";
@@ -10,6 +10,7 @@ import { GraphView } from "./components/GraphView";
 import { SearchPanel } from "./components/SearchPanel";
 import { ProposalsView } from "./components/ProposalsView";
 import { McpView } from "./components/McpView";
+import { ToolsView } from "./components/ToolsView";
 import { BriefDialog, BriefView } from "./components/Brief";
 import { JarvisView } from "./components/JarvisView";
 import { RecentView } from "./components/RecentView";
@@ -50,7 +51,6 @@ import {
   SunIcon,
   TagIcon,
   ToolsIcon,
-  GlobeIcon,
   TrashIcon,
   VaultIcon,
   XIcon,
@@ -61,6 +61,7 @@ type Main =
   | { kind: "graph" }
   | { kind: "proposals" }
   | { kind: "mcp" }
+  | { kind: "tools" }
   | { kind: "brief" }
   | { kind: "jarvis" }
   | { kind: "report" }
@@ -540,20 +541,6 @@ export default function App() {
     { label: "Pokaż Skarbiec w Eksploratorze", icon: <FolderOpenAction size={15} />, onClick: () => run(() => api.revealVault()) },
   ];
 
-  // ===== Narzędzia: często używane akcje systemowe =====
-  const toolsMenu = (): MenuItem[] => [
-    {
-      label: "Edytuj plik hosts (jako administrator)",
-      icon: <GlobeIcon size={15} />,
-      title: String.raw`Otwiera C:\Windows\System32\drivers\etc\hosts w Notatniku z uprawnieniami administratora`,
-      onClick: () => void api.toolEditHosts().catch((e) => setError(String(e))),
-    },
-  ];
-  const openToolsMenu = (e: ReactMouseEvent<HTMLButtonElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    setMenu({ x: r.left, y: r.bottom + 4, items: toolsMenu() });
-  };
-
   const onTreeMenu = (n: TreeNode | null, x: number, y: number) => {
     let items =
       side === "trash" ? (n ? trashMenu(n) : []) : !n ? rootMenu() : n.kind === "folder" ? folderMenu(n) : noteMenu(n);
@@ -751,7 +738,12 @@ export default function App() {
           >
             <PlugIcon />
           </button>
-          <button className="icon-btn" onClick={openToolsMenu} title="Narzędzia: często używane akcje" aria-label="Narzędzia">
+          <button
+            className={`icon-btn${main.kind === "tools" ? " on" : ""}`}
+            onClick={() => setMain({ kind: "tools" })}
+            title="Narzędzia: często używane akcje"
+            aria-label="Narzędzia"
+          >
             <ToolsIcon />
           </button>
         </div>
@@ -857,6 +849,7 @@ export default function App() {
           <BriefView onOpenNote={openNote} onError={onError} onOpenJarvis={() => setMain({ kind: "jarvis" })} />
         )}
         {main.kind === "jarvis" && <JarvisView onError={onError} />}
+        {main.kind === "tools" && <ToolsView onError={onError} />}
         {main.kind === "mcp" && <McpView onError={onError} onOpenProposals={() => setMain({ kind: "proposals" })} />}
         {main.kind === "proposals" && (
           <ProposalsView
