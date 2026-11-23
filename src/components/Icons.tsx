@@ -216,6 +216,20 @@ export const PlugIcon = (p: P) => (
   </Svg>
 );
 
+/** Narzędzia: klucz francuski. */
+export const ToolsIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M14.7 6.3a4 4 0 0 0-5.4 5.1L3.6 17.1a1.5 1.5 0 0 0 2.1 2.1l5.7-5.7a4 4 0 0 0 5.1-5.4l-2.5 2.5-2.1-.6-.6-2.1z" />
+  </Svg>
+);
+/** Plik hosts / sieć: globus. */
+export const GlobeIcon = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+  </Svg>
+);
+
 /** Układ edytora i podglądu: wypełniona część to edytor. */
 export const LayoutIcon = ({ layout, ...p }: P & { layout: "single" | "left" | "right" | "top" | "bottom" }) => {
   const fill = {

@@ -267,6 +267,8 @@ export const api = {
   setFolderNoai: (path: string, on: boolean) => invoke<string>("set_folder_noai", { path, on }),
   openVaultFile: (path: string) => invoke<void>("open_vault_file", { path }),
   openLink: (url: string) => invoke<void>("open_link", { url }),
+  /** Narzędzia: plik hosts w Notatniku jako administrator. */
+  toolEditHosts: () => invoke<void>("tool_edit_hosts"),
 };
 
 /** Adres pliku Skarbca do wyświetlenia w widoku (obraz, PDF). */

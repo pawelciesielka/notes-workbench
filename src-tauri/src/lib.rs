@@ -2,6 +2,7 @@ mod brief;
 mod jarvis;
 mod mcp_setup;
 mod startlog;
+mod tools;
 
 use notes_core::index::{self, Index};
 use notes_core::proposals;
@@ -598,6 +599,12 @@ fn open_link(app: AppHandle, url: String) -> Result<(), String> {
     Err(format!("Nieobsługiwany odnośnik: {url}"))
 }
 
+/// Narzędzia: plik hosts w Notatniku jako administrator.
+#[tauri::command(async)]
+fn tool_edit_hosts() -> Result<(), String> {
+    tools::edit_hosts()
+}
+
 /// Dopasowuje okno główne do obszaru roboczego monitora (bez paska zadań) i ustawia je na środku.
 /// Domyślny rozmiar z konfiguracji (1400×900) na ekranie ze skalowaniem bywa wyższy niż ekran,
 /// a wtedy dół okna chowa się pod paskiem zadań.
@@ -1057,7 +1064,8 @@ pub fn run(brief_mode: bool) {
             jarvis_control,
             jarvis_config,
             jarvis_set_config,
-            jarvis_report
+            jarvis_report,
+            tool_edit_hosts
         ])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");

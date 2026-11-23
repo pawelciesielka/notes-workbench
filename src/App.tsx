@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, folderOf, type Report, type Summary, type TreeNode } from "./lib/api";
 import { Tree } from "./components/Tree";
@@ -49,6 +49,8 @@ import {
   PlugIcon,
   SunIcon,
   TagIcon,
+  ToolsIcon,
+  GlobeIcon,
   TrashIcon,
   VaultIcon,
   XIcon,
@@ -538,6 +540,20 @@ export default function App() {
     { label: "Pokaż Skarbiec w Eksploratorze", icon: <FolderOpenAction size={15} />, onClick: () => run(() => api.revealVault()) },
   ];
 
+  // ===== Narzędzia: często używane akcje systemowe =====
+  const toolsMenu = (): MenuItem[] => [
+    {
+      label: "Edytuj plik hosts (jako administrator)",
+      icon: <GlobeIcon size={15} />,
+      title: String.raw`Otwiera C:\Windows\System32\drivers\etc\hosts w Notatniku z uprawnieniami administratora`,
+      onClick: () => void api.toolEditHosts().catch((e) => setError(String(e))),
+    },
+  ];
+  const openToolsMenu = (e: ReactMouseEvent<HTMLButtonElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setMenu({ x: r.left, y: r.bottom + 4, items: toolsMenu() });
+  };
+
   const onTreeMenu = (n: TreeNode | null, x: number, y: number) => {
     let items =
       side === "trash" ? (n ? trashMenu(n) : []) : !n ? rootMenu() : n.kind === "folder" ? folderMenu(n) : noteMenu(n);
@@ -734,6 +750,9 @@ export default function App() {
             aria-label="Połącz z AI"
           >
             <PlugIcon />
+          </button>
+          <button className="icon-btn" onClick={openToolsMenu} title="Narzędzia: często używane akcje" aria-label="Narzędzia">
+            <ToolsIcon />
           </button>
         </div>
         <div className="side-tabs" role="tablist">
