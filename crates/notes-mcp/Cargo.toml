@@ -1,6 +1,6 @@
 [package]
 name = "notes-mcp"
-version = "0.1.11"
+version = "0.1.12"
 edition = "2021"
 license = "MIT"
 description = "Serwer MCP (stdio, tylko do odczytu) dla Skarbca Notes Workbench"
