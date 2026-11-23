@@ -279,3 +279,9 @@ export const EyeIcon = (p: P) => (
     <circle cx="12" cy="12" r="2.8" />
   </Svg>
 );
+export const RefreshIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M20 12a8 8 0 1 1-2.4-5.7L20 8.6" />
+    <path d="M20 4v4.6h-4.6" />
+  </Svg>
+);

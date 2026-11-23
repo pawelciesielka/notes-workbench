@@ -11,7 +11,7 @@ import { SearchPanel } from "./components/SearchPanel";
 import { ProposalsView } from "./components/ProposalsView";
 import { McpView } from "./components/McpView";
 import { ToolsView } from "./components/ToolsView";
-import { BriefDialog, BriefView } from "./components/Brief";
+import { BriefDialog } from "./components/Brief";
 import { JarvisView } from "./components/JarvisView";
 import { RecentView } from "./components/RecentView";
 import { markViewed, moveViewed } from "./lib/recent";
@@ -836,10 +836,9 @@ export default function App() {
         {main.kind === "graph" && (
           <GraphView center={lastNote} theme={theme} onOpen={openNote} onTag={openTag} onError={onError} />
         )}
-        {main.kind === "brief" && (
-          <BriefView onOpenNote={openNote} onError={onError} onOpenJarvis={() => setMain({ kind: "jarvis" })} />
+        {(main.kind === "jarvis" || main.kind === "brief") && (
+          <JarvisView onError={onError} onOpenNote={openNote} initialTab={main.kind === "brief" ? "brief" : "tasks"} />
         )}
-        {main.kind === "jarvis" && <JarvisView onError={onError} onOpenBrief={() => setMain({ kind: "brief" })} />}
         {main.kind === "tools" && <ToolsView onError={onError} />}
         {main.kind === "mcp" && <McpView onError={onError} onOpenProposals={() => setMain({ kind: "proposals" })} />}
         {main.kind === "proposals" && (

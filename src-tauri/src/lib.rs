@@ -718,6 +718,72 @@ fn brief_today(state: State<AppState>) -> Result<Option<brief::Brief>, String> {
     brief::find_today(&PathBuf::from(dir), s.vault.as_deref().map(std::path::Path::new))
 }
 
+/// Ustawienia aktualizacji na żądanie (bez tokenu: do interfejsu idzie tylko informacja, że jest).
+#[derive(Serialize)]
+struct BriefTriggerInfo {
+    url: Option<String>,
+    has_token: bool,
+    last_fire: Option<u64>,
+    last_session: Option<String>,
+}
+
+fn trigger_info(t: &brief::Trigger) -> BriefTriggerInfo {
+    BriefTriggerInfo {
+        url: t.url.clone(),
+        has_token: t.token.as_deref().is_some_and(|s| !s.is_empty()),
+        last_fire: t.last_fire,
+        last_session: t.last_session.clone(),
+    }
+}
+
+#[tauri::command(async)]
+fn brief_trigger() -> BriefTriggerInfo {
+    trigger_info(&brief::load_trigger())
+}
+
+/// Zapis Fire URL i tokenu. `token: None` zostawia zapisany token; `url: None` czyści oba.
+#[tauri::command(async)]
+fn set_brief_trigger(url: Option<String>, token: Option<String>) -> Result<BriefTriggerInfo, String> {
+    let mut t = brief::load_trigger();
+    match url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty()) {
+        None => {
+            t.url = None;
+            t.token = None;
+        }
+        Some(u) => {
+            if !brief::valid_fire_url(&u) {
+                return Err("Fire URL powinien wyglądać tak: https://api.anthropic.com/v1/claude_code/routines/trig_…/fire".into());
+            }
+            t.url = Some(u);
+            if let Some(tok) = token.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+                t.token = Some(tok);
+            }
+        }
+    }
+    brief::save_trigger(&t)?;
+    Ok(trigger_info(&t))
+}
+
+/// Zleca rutynie w chmurze przyrostową aktualizację dzisiejszego briefu.
+#[tauri::command(async)]
+fn brief_update(state: State<AppState>) -> Result<BriefTriggerInfo, String> {
+    let mut t = brief::load_trigger();
+    let (Some(url), Some(token)) = (t.url.clone(), t.token.clone()) else {
+        return Err("Najpierw podaj Fire URL i token rutyny w ustawieniach Daily brief".into());
+    };
+    let s = state.settings.lock().unwrap().clone();
+    let prev = match s.brief_dir {
+        Some(dir) => brief::find_today(&PathBuf::from(dir), s.vault.as_deref().map(std::path::Path::new)).ok().flatten(),
+        None => None,
+    };
+    let now = chrono::Local::now();
+    let session = brief::fire(&url, &token, &brief::update_text(&now, prev.as_ref()))?;
+    t.last_fire = Some(now.timestamp_millis() as u64);
+    t.last_session = session;
+    brief::save_trigger(&t)?;
+    Ok(trigger_info(&t))
+}
+
 #[tauri::command(async)]
 fn brief_seen() -> bool {
     brief::seen_today()
@@ -892,6 +958,8 @@ fn jarvis_control(state: State<AppState>, action: String) -> Result<String, Stri
         "restart" => &["stop", "start"],
         "install" => &["install"],
         "uninstall" => &["uninstall"],
+        // Import zadań z inbox/ i zapis status.md (robi to też tracker co 5 min, ale tylko gdy działa).
+        "sync" => &["sync"],
         _ => return Err(format!("Nieznana akcja: {action}")),
     };
     let mut out = String::new();
@@ -1049,6 +1117,9 @@ pub fn run(brief_mode: bool) {
             set_brief_dir,
             set_brief_autostart,
             brief_today,
+            brief_trigger,
+            set_brief_trigger,
+            brief_update,
             brief_seen,
             brief_mark_seen,
             brief_open_main,

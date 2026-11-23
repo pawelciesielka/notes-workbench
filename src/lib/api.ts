@@ -146,6 +146,8 @@ export type Brief = {
   modified: number | null;
 };
 export type BriefConfig = { dir: string | null; autostart: boolean };
+/** Wyzwalacz API rutyny Claude, która pisze brief (token zostaje w backendzie). */
+export type BriefTrigger = { url: string | null; has_token: boolean; last_fire: number | null; last_session: string | null };
 
 /** Jarvis (docs/jarvis.md). */
 export type JarvisInfo = {
@@ -197,7 +199,7 @@ export const api = {
   jarvisAddTask: (text: string) => invoke<JarvisTask>("jarvis_add_task", { text }),
   jarvisUpdateTask: (raw: string, task: JarvisTask) => invoke<JarvisTask>("jarvis_update_task", { raw, task }),
   jarvisSetFocus: (name: string) => invoke<void>("jarvis_set_focus", { name }),
-  jarvisControl: (action: "start" | "stop" | "restart" | "install" | "uninstall") => invoke<string>("jarvis_control", { action }),
+  jarvisControl: (action: "start" | "stop" | "restart" | "install" | "uninstall" | "sync") => invoke<string>("jarvis_control", { action }),
   jarvisConfig: () => invoke<JarvisConfig>("jarvis_config"),
   /** Zwraca, czy tracker został zrestartowany. */
   jarvisSetConfig: (config: JarvisConfig) => invoke<boolean>("jarvis_set_config", { config }),
@@ -209,6 +211,11 @@ export const api = {
   /** Zwraca, czy zadanie Harmonogramu jest teraz zarejestrowane. */
   setBriefAutostart: (on: boolean) => invoke<boolean>("set_brief_autostart", { on }),
   briefToday: () => invoke<Brief | null>("brief_today"),
+  briefTrigger: () => invoke<BriefTrigger>("brief_trigger"),
+  /** `token: null` zostawia zapisany token; `url: null` czyści oba. */
+  setBriefTrigger: (url: string | null, token: string | null) => invoke<BriefTrigger>("set_brief_trigger", { url, token }),
+  /** Zleca rutynie w chmurze przyrostową aktualizację dzisiejszego briefu. */
+  briefUpdate: () => invoke<BriefTrigger>("brief_update"),
   briefSeen: () => invoke<boolean>("brief_seen"),
   briefMarkSeen: () => invoke<void>("brief_mark_seen"),
   briefOpenMain: () => invoke<void>("brief_open_main"),

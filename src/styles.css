@@ -824,7 +824,7 @@ body.tree-dragging * {
 .issues,
 .banner,
 .note > .tabs {
-  max-width: calc(780px * var(--note-scale, 1));
+  max-width: 780px;
   margin-left: auto;
   margin-right: auto;
 }
@@ -1119,7 +1119,7 @@ body.tree-dragging * {
 .editor {
   flex: 1;
   min-height: 0;
-  max-width: calc(780px * var(--note-scale, 1));
+  max-width: 780px;
   width: 100%;
   margin: 0 auto;
   border: 1px solid var(--border);
@@ -1821,7 +1821,7 @@ body.tree-dragging * {
 }
 .mcp-clients,
 .mcp-section {
-  max-width: calc(780px * var(--note-scale, 1));
+  max-width: 780px;
   margin: 0 auto;
 }
 .mcp-clients {
@@ -2152,7 +2152,7 @@ body.tree-dragging * {
 .visual-editor {
   flex: 1;
   min-height: 0;
-  max-width: calc(780px * var(--note-scale, 1));
+  max-width: 780px;
   width: 100%;
   margin: 0 auto;
   display: flex;
@@ -3096,4 +3096,23 @@ body.tree-dragging * {
 .jv-strip > svg:last-child {
   margin-left: auto;
   color: var(--faint);
+}
+.jv-tabs-gap {
+  flex: 1;
+}
+.brief-pending {
+  align-self: center;
+  white-space: nowrap;
+}
+.brief-trigger-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.brief-trigger-form input {
+  width: 100%;
+}
+.brief-embedded-lead {
+  margin: 16px 0 12px;
 }

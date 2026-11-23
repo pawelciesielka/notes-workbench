@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { open } from "@tauri-apps/plugin-dialog";
-import { api, type Brief, type BriefConfig } from "../lib/api";
+import { ask, open } from "@tauri-apps/plugin-dialog";
+import { api, type Brief, type BriefConfig, type BriefTrigger } from "../lib/api";
 import { isAhead, isNow, parseBrief, untilLabel, type BriefMeeting } from "../lib/brief";
 import { JarvisStrip } from "./JarvisView";
-import { CalendarIcon, ChevronRight, ExternalIcon, FileIcon, FolderOpenAction, XIcon } from "./Icons";
+import { CalendarIcon, ChevronRight, ExternalIcon, FileIcon, FolderOpenAction, RefreshIcon, XIcon } from "./Icons";
 
 /** Markdown briefu; odnośniki otwierają się w przeglądarce, nie w oknie aplikacji. */
 function Md({ children, onError }: { children: string; onError: (m: string) => void }) {
@@ -256,10 +256,13 @@ export function BriefView({
   onOpenNote,
   onError,
   onOpenJarvis,
+  embedded = false,
 }: {
   onOpenNote: (p: string) => void;
   onError: (m: string) => void;
   onOpenJarvis?: () => void;
+  /** Zakładka w widoku Jarvisa: bez własnego nagłówka (tytuł i zakładki daje Jarvis). */
+  embedded?: boolean;
 }) {
   const [cfg, setCfg] = useState<BriefConfig | null>(null);
   const [brief, setBrief] = useState<Brief | null | undefined>(undefined);
@@ -303,14 +306,20 @@ export function BriefView({
   const today = new Date().toLocaleDateString("sv-SE");
 
   return (
-    <div className="note">
-      <div className="note-head">
-        <h1 className="note-title">Daily brief</h1>
-        <p className="muted mcp-lead">
-          Podsumowanie dnia z pliku Markdown, który przygotowuje AI. Aplikacja szuka w wybranym Folderze pliku z dzisiejszą datą
-          w nazwie (<code>{today}</code>) i pokazuje go przy pierwszym wejściu na komputer danego dnia.
+    <div className={embedded ? "brief-embedded" : "note"}>
+      {embedded ? (
+        <p className="muted mcp-lead brief-embedded-lead">
+          Podsumowanie dnia z pliku Markdown, który przygotowuje AI (plik z datą <code>{today}</code> w nazwie).
         </p>
-      </div>
+      ) : (
+        <div className="note-head">
+          <h1 className="note-title">Daily brief</h1>
+          <p className="muted mcp-lead">
+            Podsumowanie dnia z pliku Markdown, który przygotowuje AI. Aplikacja szuka w wybranym Folderze pliku z dzisiejszą datą
+            w nazwie (<code>{today}</code>) i pokazuje go przy pierwszym wejściu na komputer danego dnia.
+          </p>
+        </div>
+      )}
       <div className="mcp-clients">
         <div className="mcp-card brief-settings">
           <div className="mcp-body">
@@ -352,6 +361,7 @@ export function BriefView({
             </div>
           </div>
         </label>
+        <BriefTriggerCard onError={onError} />
       </div>
       <div className="mcp-section brief-today">
         <h2>Dzisiaj</h2>
@@ -361,14 +371,15 @@ export function BriefView({
           <div className="muted">{cfg?.dir ? `W Folderze nie ma jeszcze pliku z datą ${today} w nazwie.` : "Najpierw wybierz Folder z briefami."}</div>
         )}
         {brief && (
-          <>
-            <div className="brief-card">
-              <BriefSummary brief={brief} onError={onError} />
-            </div>
-            <div className="actions">
-              <BriefLinks brief={brief} onOpenNote={onOpenNote} onError={onError} />
-            </div>
-          </>
+          <div className="brief-card">
+            <BriefSummary brief={brief} onError={onError} />
+          </div>
+        )}
+        {brief !== undefined && cfg?.dir && (
+          <div className="actions">
+            <BriefUpdateButton onError={onError} onBriefReady={setBrief} />
+            {brief && <BriefLinks brief={brief} onOpenNote={onOpenNote} onError={onError} />}
+          </div>
         )}
       </div>
     </div>
@@ -397,4 +408,203 @@ export function BriefGate({ app }: { app: ReactNode }) {
       />
     );
   return <>{app}</>;
+}
+
+// ===== Aktualizacja na żądanie (rutyna Claude w chmurze, docs/jarvis.md) =====
+
+/** Rutyna zwykle kończy w kilka minut; przez ten czas kolejne kliknięcie pyta o potwierdzenie. */
+const UPDATE_PENDING_MS = 15 * 60 * 1000;
+
+const hhmm = (ms: number) => new Date(ms).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
+
+/** Jarvis importuje inbox/ sam co 5 min, ale tylko gdy tracker działa; po aktualizacji briefu robimy to od razu. */
+function syncJarvis() {
+  api.jarvisControl("sync").catch(() => {});
+}
+
+/**
+ * Przycisk „Aktualizuj brief”: uruchamia rutynę, która dopisuje zmiany od poprzedniego briefu.
+ * Potem co minutę (do 30 min) sprawdza, czy w Folderze jest już nowy plik; gdy jest, importuje zadania do Jarvisa
+ * (i jeszcze raz po 2 min, bo plik w inbox/ może dojść z Dysku Google później niż brief).
+ */
+export function BriefUpdateButton({
+  onError,
+  onBriefReady,
+  className,
+}: {
+  onError: (m: string) => void;
+  onBriefReady?: (b: Brief) => void;
+  className?: string;
+}) {
+  const [trig, setTrig] = useState<BriefTrigger | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [waitingSince, setWaitingSince] = useState<number | null>(null);
+  useEffect(() => {
+    api
+      .briefTrigger()
+      .then(setTrig)
+      .catch(() => setTrig(null));
+  }, []);
+  useEffect(() => {
+    if (!waitingSince) return;
+    const id = window.setInterval(async () => {
+      if (Date.now() - waitingSince > 30 * 60 * 1000) {
+        setWaitingSince(null);
+        return;
+      }
+      const b = await api.briefToday().catch(() => null);
+      if (b?.modified && b.modified >= waitingSince) {
+        setWaitingSince(null);
+        syncJarvis();
+        // Drugi import ma się odbyć także po opuszczeniu widoku, więc tego timeoutu nie czyścimy.
+        window.setTimeout(syncJarvis, 2 * 60 * 1000);
+        onBriefReady?.(b);
+      }
+    }, 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [waitingSince, onBriefReady]);
+  const ready = !!trig?.url && trig.has_token;
+  const pending = !!trig?.last_fire && Date.now() - trig.last_fire < UPDATE_PENDING_MS;
+
+  const fire = async () => {
+    // Ustawienia mogły się zmienić w innym miejscu (karta w Daily brief): czytamy je od nowa.
+    const cur = await api.briefTrigger().catch(() => trig);
+    setTrig(cur);
+    if (!cur?.url || !cur.has_token) {
+      onError("Aktualizacja briefu: najpierw podaj Fire URL i token rutyny w ustawieniach Daily brief.");
+      return;
+    }
+    if (
+      cur.last_fire &&
+      Date.now() - cur.last_fire < UPDATE_PENDING_MS &&
+      !(await ask(`Aktualizację zlecono o ${hhmm(cur.last_fire)} i może jeszcze trwać. Zlecić kolejną?`, {
+        title: "Aktualizuj brief",
+        kind: "warning",
+      }))
+    )
+      return;
+    setBusy(true);
+    try {
+      const t = await api.briefUpdate();
+      setTrig(t);
+      setWaitingSince(t.last_fire);
+    } catch (e) {
+      onError(`Aktualizacja briefu: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        className={className}
+        disabled={busy}
+        onClick={fire}
+        title={
+          ready
+            ? "Uruchamia rutynę Claude, która dopisze do dzisiejszego briefu zmiany w kalendarzu, nowe maile i zadania"
+            : "Wymaga Fire URL i tokenu rutyny (ustawienia Daily brief)"
+        }
+      >
+        <RefreshIcon size={14} /> {busy ? "Zlecanie…" : "Aktualizuj brief"}
+      </button>
+      {pending && (
+        <span className="muted small brief-pending">
+          zlecono o {hhmm(trig!.last_fire!)}
+          {trig!.last_session && (
+            <>
+              {" · "}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  api.openLink(trig!.last_session!).catch((er) => onError(String(er)));
+                }}
+              >
+                sesja
+              </a>
+            </>
+          )}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** Ustawienia wyzwalacza: Fire URL i token z claude.ai/code/routines (Edytuj → Trigger → API). */
+function BriefTriggerCard({ onError, onChange }: { onError: (m: string) => void; onChange?: () => void }) {
+  const [trig, setTrig] = useState<BriefTrigger | null>(null);
+  const [edit, setEdit] = useState(false);
+  const [url, setUrl] = useState("");
+  const [token, setToken] = useState("");
+  useEffect(() => {
+    api
+      .briefTrigger()
+      .then(setTrig)
+      .catch((e) => onError(String(e)));
+  }, [onError]);
+
+  const save = async (u: string | null, t: string | null) => {
+    try {
+      setTrig(await api.setBriefTrigger(u, t));
+      setEdit(false);
+      setToken("");
+      onChange?.();
+    } catch (e) {
+      onError(String(e));
+    }
+  };
+
+  return (
+    <div className="mcp-card brief-settings brief-trigger">
+      <div className="mcp-body">
+        <div className="mcp-name">Aktualizacja na żądanie</div>
+        {!edit && (
+          <div className="mcp-config" title={trig?.url ?? ""}>
+            {trig?.url ? `${trig.url.replace(/^.*\/routines\//, "").replace(/\/fire$/, "")} · ${trig.has_token ? "token zapisany" : "brak tokenu"}` : "nie ustawiono"}
+          </div>
+        )}
+        {edit && (
+          <div className="brief-trigger-form">
+            <div className="muted small">
+              W claude.ai/code/routines otwórz rutynę, która pisze brief, wybierz Edytuj → Trigger → <b>+</b> → API, potem Generate token.
+            </div>
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Fire URL: https://api.anthropic.com/v1/claude_code/routines/trig_…/fire" />
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder={trig?.has_token ? "Token (puste = bez zmian)" : "Token: sk-ant-oat01-…"}
+              autoComplete="off"
+            />
+          </div>
+        )}
+      </div>
+      <div className="mcp-actions">
+        {edit ? (
+          <>
+            <button onClick={() => setEdit(false)}>Anuluj</button>
+            <button className="primary" disabled={!url.trim() || (!trig?.has_token && !token.trim())} onClick={() => save(url, token || null)}>
+              Zapisz
+            </button>
+          </>
+        ) : (
+          <>
+            {trig?.url && <button onClick={() => save(null, null)}>Wyczyść</button>}
+            <button
+              className={trig?.url ? "" : "primary"}
+              onClick={() => {
+                setUrl(trig?.url ?? "");
+                setToken("");
+                setEdit(true);
+              }}
+            >
+              {trig?.url ? "Zmień…" : "Ustaw…"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }

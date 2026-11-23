@@ -14,8 +14,9 @@ import {
   type JarvisTasks,
 } from "../lib/api";
 import { CalendarIcon, CheckIcon, ChevronRight, ExternalIcon, FolderOpenAction, PencilIcon, PlusIcon, TargetIcon, XIcon } from "./Icons";
+import { BriefUpdateButton, BriefView } from "./Brief";
 
-type Tab = "tasks" | "day" | "settings";
+type Tab = "tasks" | "day" | "settings" | "brief";
 type OnError = (m: string) => void;
 
 // ===== Pomocnicze =====
@@ -75,8 +76,17 @@ function Prio({ prio, onClick }: { prio: number | null; onClick?: () => void }) 
 
 // ===== Widok =====
 
-export function JarvisView({ onError, onOpenBrief }: { onError: OnError; onOpenBrief?: () => void }) {
-  const [tab, setTab] = useState<Tab>("tasks");
+export function JarvisView({
+  onError,
+  onOpenNote,
+  initialTab = "tasks",
+}: {
+  onError: OnError;
+  onOpenNote: (p: string) => void;
+  initialTab?: Tab;
+}) {
+  const [tab, setTab] = useState<Tab>(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab]);
   const [info, setInfo] = useState<JarvisInfo | null>(null);
   const loadInfo = useCallback(() => api.jarvisInfo().then(setInfo).catch((e) => onError(String(e))), [onError]);
   useEffect(() => {
@@ -110,13 +120,17 @@ export function JarvisView({ onError, onOpenBrief }: { onError: OnError; onOpenB
         <button className={`tab${tab === "settings" ? " on" : ""}`} onClick={() => setTab("settings")}>
           Konfiguruj Jarvisa
         </button>
-        {onOpenBrief && (
-          <button className="tab" onClick={onOpenBrief} title="Daily brief: podsumowanie dnia i ustawienia">
-            <CalendarIcon size={14} /> Daily brief
-          </button>
-        )}
+        <button
+          className={`tab${tab === "brief" ? " on" : ""}`}
+          onClick={() => setTab("brief")}
+          title="Daily brief: podsumowanie dnia i ustawienia"
+        >
+          <CalendarIcon size={14} /> Daily brief
+        </button>
+        <span className="jv-tabs-gap" />
+        <BriefUpdateButton className="tab" onError={onError} />
       </div>
-      {missing && tab !== "settings" && (
+      {missing && tab !== "settings" && tab !== "brief" && (
         <div className="mcp-section">
           <div className="banner">
             {!info.dir ? "Nie znaleziono Jarvisa (jarvis.py). " : "Nie znaleziono Pythona (python.exe). "}
@@ -129,6 +143,7 @@ export function JarvisView({ onError, onOpenBrief }: { onError: OnError; onOpenB
       {tab === "tasks" && info?.dir && <TasksTab onError={onError} />}
       {tab === "day" && info?.dir && info.python && <DayTab onError={onError} />}
       {tab === "settings" && info && <SettingsTab info={info} reloadInfo={loadInfo} onError={onError} />}
+      {tab === "brief" && <BriefView embedded onOpenNote={onOpenNote} onError={onError} onOpenJarvis={() => setTab("tasks")} />}
     </div>
   );
 }
@@ -150,7 +165,13 @@ function TasksTab({ onError }: { onError: OnError }) {
       .then((s) => setSecs(new Map(s.tasks.map((t) => [t.raw, t.secs]))))
       .catch(() => setSecs(new Map()));
   }, [onError]);
-  useEffect(load, [load]);
+  // Przy wejściu najpierw import z inbox/: tracker robi to co 5 min, ale tylko gdy działa.
+  useEffect(() => {
+    api
+      .jarvisControl("sync")
+      .catch(() => {})
+      .finally(load);
+  }, [load]);
   // Jarvis co 5 min dopisuje zadania z porannego briefu, a fokus zmienia też okno strażnika.
   useEffect(() => {
     const onFocus = () => load();

@@ -263,6 +263,7 @@ Teams
 `;
 let briefCfg = { dir: String.raw`C:\Dane\Notatki\Dziennik\Daily_brief` as string | null, autostart: false };
 let briefSeen = false;
+let briefTrig = { url: null as string | null, has_token: false, last_fire: null as number | null, last_session: null as string | null };
 Object.assign(handlers, {
   app_mode: () => (new URLSearchParams(location.search).has("brief") ? "brief" : "main"),
   brief_config: () => briefCfg,
@@ -278,6 +279,17 @@ Object.assign(handlers, {
     briefCfg.dir
       ? { name: `Brief spotkań ${today}.md`, file: `${briefCfg.dir}\\Brief spotkań ${today}.md`, note: `Dziennik/Daily_brief/Brief spotkań ${today}.md`, content: briefMd, modified: Date.now() - 3 * H }
       : null,
+  brief_trigger: () => briefTrig,
+  set_brief_trigger: (a: Record<string, unknown>) => {
+    const url = (a.url as string | null) ?? null;
+    briefTrig = { ...briefTrig, url, has_token: url ? briefTrig.has_token || !!a.token : false };
+    return briefTrig;
+  },
+  brief_update: () => {
+    if (!briefTrig.url || !briefTrig.has_token) throw new Error("Najpierw podaj Fire URL i token rutyny w ustawieniach Daily brief");
+    briefTrig = { ...briefTrig, last_fire: Date.now(), last_session: "https://claude.ai/code/session_mock" };
+    return briefTrig;
+  },
   brief_seen: () => briefSeen,
   brief_mark_seen: () => {
     briefSeen = true;
