@@ -13,7 +13,7 @@ import {
   type JarvisTask,
   type JarvisTasks,
 } from "../lib/api";
-import { CheckIcon, ChevronRight, ExternalIcon, FolderOpenAction, PencilIcon, PlusIcon, TargetIcon, XIcon } from "./Icons";
+import { CalendarIcon, CheckIcon, ChevronRight, ExternalIcon, FolderOpenAction, PencilIcon, PlusIcon, TargetIcon, XIcon } from "./Icons";
 
 type Tab = "tasks" | "day" | "settings";
 type OnError = (m: string) => void;
@@ -75,7 +75,7 @@ function Prio({ prio, onClick }: { prio: number | null; onClick?: () => void }) 
 
 // ===== Widok =====
 
-export function JarvisView({ onError }: { onError: OnError }) {
+export function JarvisView({ onError, onOpenBrief }: { onError: OnError; onOpenBrief?: () => void }) {
   const [tab, setTab] = useState<Tab>("tasks");
   const [info, setInfo] = useState<JarvisInfo | null>(null);
   const loadInfo = useCallback(() => api.jarvisInfo().then(setInfo).catch((e) => onError(String(e))), [onError]);
@@ -110,6 +110,11 @@ export function JarvisView({ onError }: { onError: OnError }) {
         <button className={`tab${tab === "settings" ? " on" : ""}`} onClick={() => setTab("settings")}>
           Konfiguruj Jarvisa
         </button>
+        {onOpenBrief && (
+          <button className="tab" onClick={onOpenBrief} title="Daily brief: podsumowanie dnia i ustawienia">
+            <CalendarIcon size={14} /> Daily brief
+          </button>
+        )}
       </div>
       {missing && tab !== "settings" && (
         <div className="mcp-section">

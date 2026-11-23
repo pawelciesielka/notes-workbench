@@ -23,7 +23,6 @@ import { SIDEBAR_DEFAULT, useSidebarWidth } from "./lib/sidebarWidth";
 import { UpdateBanner, UpdateFooter, useUpdates } from "./components/Updates";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
-  CalendarIcon,
   TargetIcon,
   CheckIcon,
   ClockIcon,
@@ -715,17 +714,9 @@ export default function App() {
             {proposalCount > 0 && <span className="badge">{proposalCount}</span>}
           </button>
           <button
-            className={`icon-btn${main.kind === "brief" ? " on" : ""}`}
-            onClick={() => setMain({ kind: "brief" })}
-            title="Daily brief: podsumowanie dnia i ustawienia"
-            aria-label="Daily brief"
-          >
-            <CalendarIcon />
-          </button>
-          <button
-            className={`icon-btn${main.kind === "jarvis" ? " on" : ""}`}
+            className={`icon-btn${main.kind === "jarvis" || main.kind === "brief" ? " on" : ""}`}
             onClick={() => setMain({ kind: "jarvis" })}
-            title="Jarvis: zadania, fokus i podsumowanie dnia"
+            title="Jarvis: zadania, fokus, podsumowanie dnia i Daily brief"
             aria-label="Jarvis"
           >
             <TargetIcon />
@@ -848,7 +839,7 @@ export default function App() {
         {main.kind === "brief" && (
           <BriefView onOpenNote={openNote} onError={onError} onOpenJarvis={() => setMain({ kind: "jarvis" })} />
         )}
-        {main.kind === "jarvis" && <JarvisView onError={onError} />}
+        {main.kind === "jarvis" && <JarvisView onError={onError} onOpenBrief={() => setMain({ kind: "brief" })} />}
         {main.kind === "tools" && <ToolsView onError={onError} />}
         {main.kind === "mcp" && <McpView onError={onError} onOpenProposals={() => setMain({ kind: "proposals" })} />}
         {main.kind === "proposals" && (
