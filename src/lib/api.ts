@@ -276,7 +276,13 @@ export const api = {
   openLink: (url: string) => invoke<void>("open_link", { url }),
   /** Narzędzia: plik hosts w Notatniku jako administrator. */
   toolEditHosts: () => invoke<void>("tool_edit_hosts"),
+  toolScripts: () => invoke<ScriptTool[]>("tool_scripts"),
+  setToolScripts: (list: ScriptTool[]) => invoke<void>("set_tool_scripts", { list }),
+  toolRunScript: (id: string) => invoke<string>("tool_run_script", { id }),
 };
+
+/** Narzędzie: skrypt PowerShell (.ps1) dodany przez użytkownika. */
+export type ScriptTool = { id: string; name: string; path: string; admin: boolean };
 
 /** Adres pliku Skarbca do wyświetlenia w widoku (obraz, PDF). */
 export function vaultUrl(relPath: string): string {

@@ -33,3 +33,73 @@ pub fn edit_hosts() -> Result<(), String> {
     }
     Err(format!("Nie udało się otworzyć pliku hosts: {}", err.trim()))
 }
+
+/// Skrypt PowerShell dodany przez użytkownika jako narzędzie.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
+pub struct ScriptTool {
+    pub id: String,
+    pub name: String,
+    /// Pełna ścieżka do pliku `.ps1`.
+    pub path: String,
+    /// Uruchamiaj jako administrator (Windows pyta przez UAC).
+    #[serde(default)]
+    pub admin: bool,
+}
+
+fn ps_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+/// Uruchamia skrypt i czeka na koniec. Zwraca ostatnie linie wyjścia (bez trybu administratora).
+pub fn run_script(t: &ScriptTool) -> Result<String, String> {
+    let path = std::path::Path::new(&t.path);
+    if !path.is_file() {
+        return Err(format!("Skrypt nie istnieje: {}", t.path));
+    }
+    if t.admin {
+        // Podniesiony proces nie odda nam wyjścia; czekamy na koniec i sprawdzamy kod wyjścia.
+        let args = format!("-NoProfile -ExecutionPolicy Bypass -File \"{}\"", t.path);
+        let script = format!(
+            "$p = Start-Process -FilePath powershell.exe -ArgumentList {} -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop; exit $p.ExitCode",
+            ps_quote(&args)
+        );
+        let out = powershell().arg(script).output().map_err(|e| e.to_string())?;
+        if out.status.success() {
+            return Ok(String::new());
+        }
+        let err = String::from_utf8_lossy(&out.stderr);
+        if err.contains("canceled") || err.contains("anulowan") || err.contains("1223") {
+            return Err("Anulowano: Windows nie dostał zgody administratora.".into());
+        }
+        let code = out.status.code().unwrap_or(-1);
+        return Err(if err.trim().is_empty() {
+            format!("Skrypt zakończył się kodem {code}.")
+        } else {
+            format!("Skrypt zakończył się błędem: {}", err.trim())
+        });
+    }
+    let mut c = Command::new("powershell");
+    c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", &t.path]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        c.creation_flags(CREATE_NO_WINDOW);
+    }
+    let out = c.output().map_err(|e| e.to_string())?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let tail = |s: &str| {
+        let lines: Vec<&str> = s.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).collect();
+        lines[lines.len().saturating_sub(3)..].join("\n")
+    };
+    if out.status.success() {
+        return Ok(tail(&stdout));
+    }
+    let err = String::from_utf8_lossy(&out.stderr);
+    let msg = if err.trim().is_empty() { tail(&stdout) } else { tail(&err) };
+    Err(format!(
+        "Skrypt zakończył się kodem {}{}",
+        out.status.code().unwrap_or(-1),
+        if msg.is_empty() { ".".into() } else { format!(": {msg}") }
+    ))
+}

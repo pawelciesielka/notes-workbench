@@ -1897,6 +1897,29 @@ body.tree-dragging * {
   color: var(--muted);
   line-height: 1.45;
 }
+.tool-output {
+  white-space: pre-wrap;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.tool-form .field input {
+  width: 100%;
+}
+.tool-form .field {
+  margin: 12px 0;
+}
+.tool-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.tool-add {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .mcp-actions {
   display: flex;
   gap: 6px;

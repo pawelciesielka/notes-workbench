@@ -32,6 +32,9 @@ struct Settings {
     /// Interpreter Pythona dla Jarvisa; brak = wykryty automatycznie.
     #[serde(default)]
     jarvis_python: Option<String>,
+    /// Narzędzia-skrypty `.ps1` dodane przez użytkownika.
+    #[serde(default)]
+    script_tools: Vec<tools::ScriptTool>,
 }
 
 #[derive(Default)]
@@ -605,6 +608,36 @@ fn tool_edit_hosts() -> Result<(), String> {
     tools::edit_hosts()
 }
 
+#[tauri::command(async)]
+fn tool_scripts(state: State<AppState>) -> Vec<tools::ScriptTool> {
+    state.settings.lock().unwrap().script_tools.clone()
+}
+
+/// Zapisuje całą listę narzędzi-skryptów (dodanie, edycja, usunięcie).
+#[tauri::command(async)]
+fn set_tool_scripts(app: AppHandle, state: State<AppState>, list: Vec<tools::ScriptTool>) -> Result<(), String> {
+    for t in &list {
+        if t.name.trim().is_empty() {
+            return Err("Podaj nazwę narzędzia".into());
+        }
+        if !t.path.to_lowercase().ends_with(".ps1") {
+            return Err(format!("To nie jest skrypt .ps1: {}", t.path));
+        }
+    }
+    let s = {
+        let mut s = state.settings.lock().unwrap();
+        s.script_tools = list;
+        s.clone()
+    };
+    save_settings(&app, &s)
+}
+
+#[tauri::command(async)]
+fn tool_run_script(state: State<AppState>, id: String) -> Result<String, String> {
+    let t = state.settings.lock().unwrap().script_tools.iter().find(|t| t.id == id).cloned();
+    tools::run_script(&t.ok_or("Nie ma takiego narzędzia")?)
+}
+
 /// Dopasowuje okno główne do obszaru roboczego monitora (bez paska zadań) i ustawia je na środku.
 /// Domyślny rozmiar z konfiguracji (1400×900) na ekranie ze skalowaniem bywa wyższy niż ekran,
 /// a wtedy dół okna chowa się pod paskiem zadań.
@@ -1136,7 +1169,10 @@ pub fn run(brief_mode: bool) {
             jarvis_config,
             jarvis_set_config,
             jarvis_report,
-            tool_edit_hosts
+            tool_edit_hosts,
+            tool_scripts,
+            set_tool_scripts,
+            tool_run_script
         ])
         .run(tauri::generate_context!())
         .expect("błąd uruchomienia aplikacji");
