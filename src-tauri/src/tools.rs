@@ -44,6 +44,13 @@ pub struct ScriptTool {
     /// Uruchamiaj jako administrator (Windows pyta przez UAC).
     #[serde(default)]
     pub admin: bool,
+    /// Pokaż okno PowerShell: skrypt może pytać i czekać na Enter, aplikacja nie czeka na jego koniec.
+    #[serde(default = "yes")]
+    pub window: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 fn ps_quote(s: &str) -> String {
@@ -56,9 +63,29 @@ pub fn run_script(t: &ScriptTool) -> Result<String, String> {
     if !path.is_file() {
         return Err(format!("Skrypt nie istnieje: {}", t.path));
     }
+    let cancelled = |err: &str| err.contains("canceled") || err.contains("anulowan") || err.contains("1223");
+    if t.window {
+        // Zwykłe okno konsoli: widać wyjście, skrypt może pytać. Nie czekamy na koniec.
+        let args = format!("-NoProfile -ExecutionPolicy Bypass -File \"{}\"", t.path);
+        let script = format!(
+            "Start-Process -FilePath powershell.exe -ArgumentList {}{} -ErrorAction Stop",
+            ps_quote(&args),
+            if t.admin { " -Verb RunAs" } else { "" }
+        );
+        let out = powershell().arg(script).output().map_err(|e| e.to_string())?;
+        if out.status.success() {
+            return Ok("Uruchomiono w osobnym oknie.".into());
+        }
+        let err = String::from_utf8_lossy(&out.stderr);
+        if cancelled(&err) {
+            return Err("Anulowano: Windows nie dostał zgody administratora.".into());
+        }
+        return Err(format!("Nie udało się uruchomić skryptu: {}", err.trim()));
+    }
     if t.admin {
         // Podniesiony proces nie odda nam wyjścia; czekamy na koniec i sprawdzamy kod wyjścia.
-        let args = format!("-NoProfile -ExecutionPolicy Bypass -File \"{}\"", t.path);
+        // -NonInteractive: pytanie (Read-Host) kończy skrypt błędem zamiast zawiesić go w ukrytym oknie.
+        let args = format!("-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{}\"", t.path);
         let script = format!(
             "$p = Start-Process -FilePath powershell.exe -ArgumentList {} -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop; exit $p.ExitCode",
             ps_quote(&args)
@@ -68,12 +95,12 @@ pub fn run_script(t: &ScriptTool) -> Result<String, String> {
             return Ok(String::new());
         }
         let err = String::from_utf8_lossy(&out.stderr);
-        if err.contains("canceled") || err.contains("anulowan") || err.contains("1223") {
+        if cancelled(&err) {
             return Err("Anulowano: Windows nie dostał zgody administratora.".into());
         }
         let code = out.status.code().unwrap_or(-1);
         return Err(if err.trim().is_empty() {
-            format!("Skrypt zakończył się kodem {code}.")
+            format!("Skrypt zakończył się kodem {code}. Jeśli o coś pyta albo czeka na Enter, włącz „Pokaż okno PowerShell”.")
         } else {
             format!("Skrypt zakończył się błędem: {}", err.trim())
         });

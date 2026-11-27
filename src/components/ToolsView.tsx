@@ -33,12 +33,13 @@ const TOOLS: Tool[] = [
   },
 ];
 
-type Draft = { id: string | null; name: string; path: string; admin: boolean };
-const EMPTY: Draft = { id: null, name: "", path: "", admin: false };
+type Draft = { id: string | null; name: string; path: string; admin: boolean; window: boolean };
+const EMPTY: Draft = { id: null, name: "", path: "", admin: false, window: true };
 
 /** Strona Narzędzi w głównym obszarze. */
 export function ToolsView({ onError }: Props) {
-  const [busy, setBusy] = useState<string | null>(null);
+  /** Narzędzia w trakcie działania: blokujemy tylko ich własne przyciski. */
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [done, setDone] = useState<Record<string, string>>({});
   const [scripts, setScripts] = useState<ScriptTool[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -48,7 +49,7 @@ export function ToolsView({ onError }: Props) {
   }, [onError]);
 
   const exec = async (id: string, fn: () => Promise<string>) => {
-    setBusy(id);
+    setBusy((b) => ({ ...b, [id]: true }));
     setDone((d) => ({ ...d, [id]: "" }));
     try {
       const msg = await fn();
@@ -56,7 +57,7 @@ export function ToolsView({ onError }: Props) {
     } catch (e) {
       onError(String(e));
     } finally {
-      setBusy(null);
+      setBusy((b) => ({ ...b, [id]: false }));
     }
   };
 
@@ -91,6 +92,7 @@ export function ToolsView({ onError }: Props) {
       name: draft.name.trim(),
       path: draft.path.trim().replace(/^"|"$/g, ""),
       admin: draft.admin,
+      window: draft.window,
     };
     const list = draft.id ? scripts.map((s) => (s.id === draft.id ? item : s)) : [...scripts, item];
     if (await saveList(list)) setDraft(null);
@@ -128,10 +130,10 @@ export function ToolsView({ onError }: Props) {
             <div className="mcp-actions">
               <button
                 className="primary"
-                disabled={busy !== null}
+                disabled={!!busy[t.id]}
                 onClick={() => void exec(t.id, () => t.run().then(() => t.after))}
               >
-                {busy === t.id ? "Otwieranie…" : t.button}
+                {busy[t.id] ? "Otwieranie…" : t.button}
               </button>
             </div>
           </div>
@@ -145,7 +147,8 @@ export function ToolsView({ onError }: Props) {
             <div className="mcp-body">
               <div className="mcp-name">{s.name}</div>
               <div className="tool-about">
-                Skrypt PowerShell{s.admin ? ", uruchamiany jako administrator (Windows zapyta o zgodę)" : ""}.
+                Skrypt PowerShell{s.window ? " w osobnym oknie" : ", bez okna"}
+                {s.admin ? ", jako administrator (Windows zapyta o zgodę)" : ""}.
               </div>
               <div className="mcp-config" title={s.path}>
                 {s.path}
@@ -153,18 +156,18 @@ export function ToolsView({ onError }: Props) {
               {done[s.id] && <div className="mcp-after tool-output">{done[s.id]}</div>}
             </div>
             <div className="mcp-actions">
-              <button className="ghost icon-only" disabled={busy !== null} title="Edytuj" onClick={() => setDraft({ ...s })}>
+              <button className="ghost icon-only" disabled={!!busy[s.id]} title="Edytuj" onClick={() => setDraft({ ...s })}>
                 <PencilIcon size={16} />
               </button>
-              <button className="ghost icon-only" disabled={busy !== null} title="Usuń z listy" onClick={() => void remove(s)}>
+              <button className="ghost icon-only" disabled={!!busy[s.id]} title="Usuń z listy" onClick={() => void remove(s)}>
                 <TrashIcon size={16} />
               </button>
               <button
                 className="primary"
-                disabled={busy !== null}
+                disabled={!!busy[s.id]}
                 onClick={() => void exec(s.id, () => api.toolRunScript(s.id).then((out) => out || "Gotowe."))}
               >
-                {busy === s.id ? "Działa…" : "Uruchom"}
+                {busy[s.id] ? (s.window ? "Uruchamianie…" : "Działa…") : "Uruchom"}
               </button>
             </div>
           </div>
@@ -200,6 +203,14 @@ export function ToolsView({ onError }: Props) {
                   onChange={(e) => setDraft({ ...draft, admin: e.target.checked })}
                 />{" "}
                 Uruchamiaj jako administrator (np. restart sterowników)
+              </label>
+              <label className="tool-check">
+                <input
+                  type="checkbox"
+                  checked={draft.window}
+                  onChange={(e) => setDraft({ ...draft, window: e.target.checked })}
+                />{" "}
+                Pokaż okno PowerShell (gdy skrypt o coś pyta albo czeka na Enter)
               </label>
               <div className="actions">
                 <button className="ghost" onClick={() => setDraft(null)}>

@@ -282,7 +282,7 @@ export const api = {
 };
 
 /** Narzędzie: skrypt PowerShell (.ps1) dodany przez użytkownika. */
-export type ScriptTool = { id: string; name: string; path: string; admin: boolean };
+export type ScriptTool = { id: string; name: string; path: string; admin: boolean; window: boolean };
 
 /** Adres pliku Skarbca do wyświetlenia w widoku (obraz, PDF). */
 export function vaultUrl(relPath: string): string {

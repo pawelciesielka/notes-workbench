@@ -1914,6 +1914,9 @@ body.tree-dragging * {
   gap: 6px;
   font-size: 13px;
 }
+.tool-check + .tool-check {
+  margin-top: 6px;
+}
 .tool-add {
   justify-self: start;
   display: inline-flex;
